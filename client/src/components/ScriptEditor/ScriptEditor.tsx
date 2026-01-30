@@ -15,11 +15,12 @@ interface ScriptEditorProps {
   storyId: string;
   currentUserId: string;
   onAddFactCheck?: (selection: { start: number; end: number; text: string }) => void;
+  onDirty?: () => void;
   readOnly?: boolean;
 }
 
 export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(function ScriptEditor(
-  { storyId, currentUserId: _currentUserId, onAddFactCheck, readOnly },
+  { storyId, currentUserId: _currentUserId, onAddFactCheck, onDirty, readOnly },
   ref
 ) {
   const [content, setContent] = useState('');
@@ -113,6 +114,7 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(fu
     editable: !readOnly && (lockHeld || !locked),
     onUpdate: ({ editor }) => {
       setContent(editor.getHTML());
+      onDirty?.();
     },
     editorProps: {
       attributes: {

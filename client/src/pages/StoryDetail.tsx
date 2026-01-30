@@ -219,6 +219,8 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
       await handleUpdateStory(getSavePayload(story));
     }
     await scriptEditorRef.current?.saveDraft?.();
+    dirtyRef.current = false;
+    setDirtyTick((t) => t + 1);
   }, [story, hasUnsavedChanges, saving, handleUpdateStory, getSavePayload]);
 
   const handleAddFactCheck = useCallback(
@@ -628,6 +630,7 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
                 storyId={story._id}
                 currentUserId={user?._id ?? ''}
                 onAddFactCheck={handleAddFactCheck}
+                onDirty={markDirty}
               />
             )}
             {activeTab === 'Research' && (
