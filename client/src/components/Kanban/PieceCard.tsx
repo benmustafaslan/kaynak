@@ -9,14 +9,6 @@ function getLinkedStories(piece: Piece): LinkedStoryRef[] {
   );
 }
 
-function getFirstLinkedStoryId(piece: Piece): string | null {
-  const linked = piece.linkedStoryIds ?? [];
-  const first = linked[0];
-  if (typeof first === 'string') return first;
-  if (typeof first === 'object' && first !== null && '_id' in first) return (first as LinkedStoryRef)._id;
-  return null;
-}
-
 function getFirstLinkedStoryHeadline(piece: Piece): string | null {
   const linked = getLinkedStories(piece);
   return linked[0]?.headline ?? null;
@@ -39,7 +31,6 @@ interface PieceCardProps {
 }
 
 export function PieceCard({ piece, isDragging, onDragStart, variant: _variant = 'row' }: PieceCardProps) {
-  const firstStoryId = getFirstLinkedStoryId(piece);
   const firstHeadline = getFirstLinkedStoryHeadline(piece);
   const stateLower = (piece.state || 'scripting').toLowerCase();
 

@@ -318,17 +318,20 @@ export default function IdeasInbox() {
   };
 
   const handleRejectPiece = (piece: Piece) => setRejectForPiece(piece);
-  const handleRejectPieceConfirm = async (reason: string) => {
-    if (!rejectForPiece) return;
+
+  const handleRejectSeries = (pkg: Story) => setRejectForSeries(pkg);
+  const handleParkSeries = (pkg: Story) => setParkForSeries(pkg);
+  const handleApproveSeries = async (pkg: Story) => {
+    if (!user) return;
     try {
-      await piecesApi.update(rejectForPiece._id, {
-        rejectedAt: new Date().toISOString(),
-        rejectionReason: reason || undefined,
+      await storiesApi.update(pkg._id, {
+        approved: true,
+        approvedBy: user._id,
+        approvedAt: new Date().toISOString(),
       });
-      setRejectForPiece(null);
-      await fetchPieceIdeas();
+      await fetchSeries();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reject');
+      setError(err instanceof Error ? err.message : 'Failed to approve series');
     }
   };
 
