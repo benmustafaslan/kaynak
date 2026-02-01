@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { invitesApi } from '../utils/workspacesApi';
@@ -12,6 +12,7 @@ export default function JoinByInvite() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const { setCurrentBySlug, fetchWorkspaces } = useWorkspaceStore();
   const tokenFromUrl = searchParams.get('token') || '';
   const [token, setToken] = useState(tokenFromUrl);
@@ -82,8 +83,31 @@ export default function JoinByInvite() {
     );
   }
 
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  };
+
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4" style={{ background: 'var(--app-bg)' }}>
+    <div className="flex min-h-screen flex-col px-4 py-8" style={{ background: 'var(--app-bg)' }}>
+      <div className="mb-6 flex items-center justify-between">
+        <Link
+          to="/w"
+          className="text-sm font-medium"
+          style={{ color: 'var(--accent-primary)' }}
+        >
+          Back to my workspaces
+        </Link>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="text-sm font-medium"
+          style={{ color: 'var(--medium-gray)' }}
+        >
+          Log out
+        </button>
+      </div>
+      <div className="flex flex-1 flex-col items-center justify-center">
       <div className="w-full max-w-md">
         <h1 className="text-center text-xl font-bold" style={{ color: 'var(--black)', marginBottom: 8 }}>
           Join workspace
@@ -113,6 +137,7 @@ export default function JoinByInvite() {
             {joining ? 'Joining…' : 'Join workspace'}
           </button>
         </form>
+      </div>
       </div>
     </div>
   );

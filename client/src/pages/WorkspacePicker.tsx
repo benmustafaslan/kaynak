@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../stores/authStore';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { invitesApi } from '../utils/workspacesApi';
 
 export default function WorkspacePicker() {
   const navigate = useNavigate();
+  const logout = useAuthStore((s) => s.logout);
   const { workspaces, loading, error, fetchWorkspaces, setCurrentBySlug } = useWorkspaceStore();
   const [inviteInput, setInviteInput] = useState('');
   const [joining, setJoining] = useState(false);
@@ -50,8 +52,35 @@ export default function WorkspacePicker() {
 
   const noWorkspaces = !loading && workspaces.length === 0;
 
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  };
+
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-8" style={{ background: 'var(--app-bg)' }}>
+    <div className="flex min-h-screen flex-col px-4 py-8" style={{ background: 'var(--app-bg)' }}>
+      <div className="mb-6 flex items-center justify-between">
+        <Link
+          to="/w"
+          onClick={(e) => {
+            e.preventDefault();
+            fetchWorkspaces();
+          }}
+          className="text-sm font-medium"
+          style={{ color: 'var(--accent-primary)' }}
+        >
+          {workspaces.length > 0 ? 'My workspaces' : 'Refresh'}
+        </Link>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="text-sm font-medium"
+          style={{ color: 'var(--medium-gray)' }}
+        >
+          Log out
+        </button>
+      </div>
+      <div className="flex flex-1 flex-col items-center justify-center">
       <div className="w-full max-w-md">
         <h1 className="text-center text-xl font-bold" style={{ color: 'var(--black)', marginBottom: 8 }}>
           {noWorkspaces ? 'Get started' : 'Choose a workspace'}
@@ -121,6 +150,7 @@ export default function WorkspacePicker() {
             Create a new workspace
           </Link>
         </div>
+      </div>
       </div>
     </div>
   );
