@@ -46,6 +46,8 @@ export const piecesApi = {
     headline: string;
     state?: string;
     linkedStoryIds?: string[];
+    deadline?: string | null;
+    deadlines?: Partial<Record<string, string | null>>;
   }) => api.post<Piece>('/pieces', data),
 
   /** Update piece (by piece id only). */
@@ -56,12 +58,17 @@ export const piecesApi = {
       state?: string;
       format?: string;
       linkedStoryIds?: string[];
+      producer?: string | null;
+      editors?: string[];
+      teamMembers?: { userId: string; role: string }[];
       rejectedAt?: string | null;
       rejectionReason?: string | null;
       parkedUntil?: string | null;
       approved?: boolean;
       approvedBy?: string | null;
       approvedAt?: string | null;
+      deadline?: string | null;
+      deadlines?: Partial<Record<string, string | null>>;
     }
   ) =>
     api.patch<Piece>(`/pieces/${pieceId}`, data),

@@ -14,25 +14,6 @@ export function calculateAverageCycleTime(stories: Story[]): string {
   return `${avg}d`;
 }
 
-export function isOverdue(story: Story): boolean {
-  if (!story.deadlines?.length) return false;
-  const now = new Date();
-  return story.deadlines.some(
-    (d) => !d.completed && new Date(d.date).getTime() < now.getTime()
-  );
-}
-
-export function isDueThisWeek(story: Story): boolean {
-  if (!story.deadlines?.length) return false;
-  const now = new Date();
-  const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  return story.deadlines.some((d) => {
-    if (d.completed) return false;
-    const dDate = new Date(d.date);
-    return dDate.getTime() >= now.getTime() && dDate.getTime() <= weekFromNow.getTime();
-  });
-}
-
 export function isPublishedThisMonth(story: Story): boolean {
   if (!story.publishedAt) return false;
   const now = new Date();

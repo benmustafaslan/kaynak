@@ -102,11 +102,12 @@ export default function Stories() {
   }, [stories, storySearch, seriesFilter, seriesHeadlineById]);
 
   const handleNewStory = useCallback(
-    async (data: { headline: string; description: string; categories: string[]; parentStoryId?: string }) => {
+    async (data: { headline: string; description: string; categories: string[]; state?: string; parentStoryId?: string }) => {
       await storiesApi.create({
         headline: data.headline,
         description: data.description,
         categories: data.categories,
+        ...(data.state ? { state: data.state } : {}),
         ...(data.parentStoryId ? { parentStoryId: data.parentStoryId } : {}),
       });
       setShowNewStory(false);

@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { invitesApi } from '../utils/workspacesApi';
 
 export default function WorkspacePicker() {
   const navigate = useNavigate();
+  const location = useLocation();
   const logout = useAuthStore((s) => s.logout);
   const { workspaces, loading, error, fetchWorkspaces, setCurrentBySlug } = useWorkspaceStore();
   const [inviteInput, setInviteInput] = useState('');
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState('');
+  const pendingJoinName = (location.state as { pendingJoin?: string } | null)?.pendingJoin ?? null;
 
   useEffect(() => {
     fetchWorkspaces();
@@ -33,6 +35,10 @@ export default function WorkspacePicker() {
     try {
       const res = await invitesApi.accept(rawToken);
       await fetchWorkspaces();
+      if (res.pendingApproval) {
+        navigate('/w', { replace: true, state: { pendingJoin: res.workspace.name } });
+        return;
+      }
       await setCurrentBySlug(res.workspace.slug);
       navigate(`/w/${res.workspace.slug}/board`, { replace: true });
     } catch (err) {
@@ -90,6 +96,11 @@ export default function WorkspacePicker() {
             ? 'Create your first workspace or join one with an invite link.'
             : 'Select a workspace to continue, or create one.'}
         </p>
+        {pendingJoinName && (
+          <p className="mb-4 text-center text-sm" style={{ color: 'var(--accent-primary)' }}>
+            Your request to join <strong>{pendingJoinName}</strong> is pending. An owner will approve your access.
+          </p>
+        )}
         {error && (
           <p className="mb-4 text-center text-sm" style={{ color: 'var(--accent-danger)' }}>{error}</p>
         )}

@@ -16,8 +16,8 @@ const IDEAS_PAGE_SIZE = 20;
 
 type SortOption = 'updatedAtDesc' | 'updatedAtAsc' | 'createdAtDesc' | 'createdAtAsc';
 
-function canApproveIdeas(role: string | undefined): boolean {
-  return role === 'chief_editor' || role === 'producer';
+function canApproveIdeas(_role: string | undefined): boolean {
+  return true;
 }
 
 function formatActivityMessage(log: ActivityItemWithStory): string {
@@ -216,8 +216,7 @@ export default function IdeasInbox() {
         approved: true,
         approvedBy: user._id,
         approvedAt: now,
-        producer: user._id,
-        editors: [],
+        ownerId: user._id,
       });
       await fetchIdeas();
       await fetchActivity();
@@ -234,8 +233,7 @@ export default function IdeasInbox() {
         approved: true,
         approvedBy: user._id,
         approvedAt: now,
-        producer: assignments.producer || undefined,
-        editors: assignments.editors,
+        ownerId: assignments.producer || undefined,
       });
       setAssignmentFor(null);
       await fetchIdeas();
@@ -358,12 +356,14 @@ export default function IdeasInbox() {
     headline: string;
     description: string;
     categories: string[];
+    state?: string;
     parentStoryId?: string;
   }) => {
     await storiesApi.create({
       headline: data.headline,
       description: data.description,
       categories: data.categories,
+      ...(data.state ? { state: data.state } : {}),
       ...(data.parentStoryId ? { parentStoryId: data.parentStoryId } : {}),
     });
     setShowAddIdea(false);
@@ -486,7 +486,7 @@ export default function IdeasInbox() {
                       onApproveAsMine={handleApproveAsMine}
                       onReject={handleReject}
                       onPark={handlePark}
-                      canApprove={canApprove}
+                      canApprove={true}
                       isProducer={user?.role === 'producer'}
                     />
                   ))}
@@ -500,7 +500,7 @@ export default function IdeasInbox() {
                         onReject={handleRejectPiece}
                         onPark={handleParkPiece}
                         onApprove={handleApprovePiece}
-                        canApprove={canApprove}
+                        canApprove={true}
                       />
                     ))}
                 </div>
@@ -585,7 +585,7 @@ export default function IdeasInbox() {
                     onReject={handleRejectSeries}
                     onPark={handleParkSeries}
                     onApprove={handleApproveSeries}
-                    canApprove={canApprove}
+                    canApprove={true}
                   />
                 ))}
               </div>

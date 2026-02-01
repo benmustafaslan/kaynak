@@ -6,6 +6,7 @@ import Register from './pages/Register';
 import WorkspacePicker from './pages/WorkspacePicker';
 import CreateWorkspace from './pages/CreateWorkspace';
 import JoinByInvite from './pages/JoinByInvite';
+import Dashboard from './pages/Dashboard';
 import Board from './pages/Board';
 import Stories from './pages/Stories';
 import IdeasInbox from './pages/IdeasInbox';
@@ -83,7 +84,8 @@ function App() {
             )
           }
         >
-          <Route index element={<Navigate to="board" replace />} />
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<Dashboard />} />
           <Route path="board" element={<Board />} />
           <Route path="stories" element={<Stories />} />
           <Route path="ideas" element={<IdeasInbox />} />
@@ -102,7 +104,8 @@ function App() {
             )
           }
         >
-          <Route index element={<Navigate to="/board" replace />} />
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<Dashboard />} />
           <Route path="board" element={<Board />} />
           <Route path="stories" element={<Stories />} />
           <Route path="ideas" element={<IdeasInbox />} />

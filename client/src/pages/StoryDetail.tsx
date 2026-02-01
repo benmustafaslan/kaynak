@@ -22,8 +22,8 @@ import { LongTextField } from '../components/LongTextField';
 import { AssignmentModal, RejectModal, ParkModal } from '../components/IdeasInbox';
 import type { AssignmentResult } from '../components/IdeasInbox/AssignmentModal';
 
-function canApproveIdeas(role: string | undefined): boolean {
-  return role === 'chief_editor' || role === 'producer';
+function canApproveIdeas(_userRole?: string, _storyOwnerId?: string | UserRef | null, _currentUserId?: string): boolean {
+  return true;
 }
 
 const TABS = ['Research', 'Media', 'Activity'] as const;
@@ -48,54 +48,9 @@ const IconPlus = () => (
   </svg>
 );
 
-/** Role assignments in Story details – multiple people per role. Predefined + custom (user-editable). */
-const ROLE_OPTIONS = ['Producer', 'Editor', 'Videographer', 'Reporter', 'Researcher'] as const;
-const CUSTOM_ROLE_PLACEHOLDER = 'Other…';
-const REMOVED_ROLE_TYPES_KEY = 'kaynak_removed_role_types';
-const CUSTOM_ROLE_TYPES_KEY = 'kaynak_custom_role_types';
-
-function loadRemovedRoleTypes(): string[] {
-  try {
-    const raw = localStorage.getItem(REMOVED_ROLE_TYPES_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function loadCustomRoleTypes(): string[] {
-  try {
-    const raw = localStorage.getItem(CUSTOM_ROLE_TYPES_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-interface RoleAssignment {
-  role: string;
-  userId: string;
-}
-
 function getUserId(ref: string | UserRef | undefined): string | null {
   if (!ref) return null;
   return typeof ref === 'object' ? ref._id : ref;
-}
-
-function buildAssignmentsFromStory(story: Story): RoleAssignment[] {
-  if (story.teamMembers?.length) {
-    return story.teamMembers
-      .map((m) => ({ role: m.role, userId: getUserId(m.userId) }))
-      .filter((a): a is RoleAssignment => Boolean(a.userId));
-  }
-  const assignments: RoleAssignment[] = [];
-  const producerId = getUserId(story.producer);
-  if (producerId) assignments.push({ role: 'Producer', userId: producerId });
-  (story.editors ?? []).forEach((e) => {
-    const uid = getUserId(e);
-    if (uid) assignments.push({ role: 'Editor', userId: uid });
-  });
-  return assignments;
 }
 
 export interface StoryDetailProps {
@@ -140,7 +95,6 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
   const [submittingComment, setSubmittingComment] = useState(false);
   const [related, setRelated] = useState<{ parentStory: Story | null; relatedStories: Story[] } | null>(null);
   const [parentStories, setParentStories] = useState<Story[]>([]);
-  const [newRoleAssignment, setNewRoleAssignment] = useState<RoleAssignment | null>(null);
   const [, setLastSavedStory] = useState<Story | null>(null);
   const [showMoreProperties, setShowMoreProperties] = useState(false);
   const [pieces, setPieces] = useState<Piece[]>([]);
@@ -253,9 +207,7 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
           | 'categories'
           | 'checklist'
           | 'researchNotes'
-          | 'producer'
-          | 'editors'
-          | 'teamMembers'
+          | 'ownerId'
           | 'parentStoryId'
         >
       >
@@ -283,12 +235,12 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
     checklist: s.checklist,
     researchNotes: s.researchNotes,
     parentStoryId: s.parentStoryId,
-    teamMembers: s.teamMembers,
+    ownerId: s.ownerId,
   }), []);
 
   const isIdeaPending = story?.state?.toLowerCase() === 'idea' && !story?.approved && !story?.rejectedAt;
-  const canApprove = canApproveIdeas(user?.role);
-  const isProducer = user?.role === 'producer';
+  const canApprove = canApproveIdeas(user?.role, story?.ownerId, user?._id);
+  const isOwner = Boolean(story?.ownerId && getUserId(story.ownerId) === user?._id);
 
   const handleAssignmentConfirm = useCallback(
     async (assignments: AssignmentResult) => {
@@ -299,8 +251,7 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
           approved: true,
           approvedBy: user._id,
           approvedAt: now,
-          producer: assignments.producer || undefined,
-          editors: assignments.editors,
+          ownerId: assignments.producer || undefined,
         });
         setShowAssignmentModal(false);
         await fetchStory();
@@ -319,8 +270,7 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
         approved: true,
         approvedBy: user._id,
         approvedAt: now,
-        producer: user._id,
-        editors: [],
+        ownerId: user._id,
       });
       await fetchStory();
     } catch (err) {
@@ -654,7 +604,7 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
                     {(story.state?.toLowerCase() === 'archived' ? (
                       <button
                         type="button"
-                        onClick={() => { setExportOpen(false); handleUpdateStory({ state: 'published' }); }}
+                        onClick={() => { setExportOpen(false); handleUpdateStory({ state: 'visible' }); }}
                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-app-text-primary hover:bg-transparent"
                       >
                         Unarchive
@@ -702,7 +652,7 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
                   <button type="button" className="btn btn-primary" onClick={() => setShowAssignmentModal(true)}>
                     ✓ Approve & Start Research
                   </button>
-                  {isProducer && (
+                  {isOwner && (
                     <button type="button" className="btn btn-primary" onClick={handleApproveAsMine}>
                       ✓ Approve as my story
                     </button>
@@ -737,154 +687,20 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
                 </div>
               </div>
             )}
-            {/* Roles – first on same line as title; rest and Add on new lines */}
-            <div className="space-y-3 py-2">
-              {(() => {
-                const assignList = buildAssignmentsFromStory(story);
-                const rows = newRoleAssignment ? [...assignList, newRoleAssignment] : assignList;
-                const updateRoles = (next: RoleAssignment[]) => {
-                  handleUpdateStory({ teamMembers: next.filter((a) => a.role && a.userId) });
-                  setNewRoleAssignment(null);
-                };
-                const predefined = new Set(ROLE_OPTIONS);
-                const custom = Array.from(new Set([...loadCustomRoleTypes(), ...rows.map((r) => r.role).filter((r) => r && !predefined.has(r as (typeof ROLE_OPTIONS)[number]))])).sort();
-                const removed = loadRemovedRoleTypes();
-                const opts = [...ROLE_OPTIONS.filter((r) => !removed.includes(r)), ...custom.filter((r) => !removed.includes(r)), ...removed.filter((r) => rows.some((x) => x.role === r)), CUSTOM_ROLE_PLACEHOLDER];
-                const firstRow = rows[0];
-                const renderRoleRow = (row: RoleAssignment, i: number) => {
-                  const isNew = newRoleAssignment && i === rows.length - 1;
-                  const showCustom = row.role === '' || row.role === CUSTOM_ROLE_PLACEHOLDER || (row.role && !predefined.has(row.role as (typeof ROLE_OPTIONS)[number]));
-                  const selVal = row.role && (predefined.has(row.role as (typeof ROLE_OPTIONS)[number]) || custom.includes(row.role)) ? row.role : CUSTOM_ROLE_PLACEHOLDER;
-                  return (
-                    <div key={isNew ? 'new' : `${row.role}-${row.userId}-${i}`} className="flex w-full items-center gap-3 pl-[calc(1rem+5rem)]">
-                      <select
-                        value={selVal}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (v === CUSTOM_ROLE_PLACEHOLDER) {
-                            if (isNew) setNewRoleAssignment((p) => (p ? { ...p, role: '' } : { role: '', userId: '' }));
-                            else updateRoles(assignList.map((a, j) => (j === i ? { ...a, role: '' } : a)));
-                          } else {
-                            if (isNew) setNewRoleAssignment((p) => (p ? { ...p, role: v } : { role: v, userId: '' }));
-                            else updateRoles(assignList.map((a, j) => (j === i ? { ...a, role: v } : a)));
-                          }
-                        }}
-                        className="min-w-[120px] rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm text-app-text-primary focus:border-[#2383e6] focus:outline-none"
-                      >
-                        {opts.map((r) => (
-                          <option key={r} value={r}>{r}</option>
-                        ))}
-                      </select>
-                      {showCustom && (
-                        <input
-                          type="text"
-                          value={row.role && row.role !== CUSTOM_ROLE_PLACEHOLDER ? row.role : ''}
-                          onChange={(e) => {
-                            const r = e.target.value.trim();
-                            if (isNew) setNewRoleAssignment((p) => (p ? { ...p, role: r } : { role: r, userId: '' }));
-                            else updateRoles(assignList.map((a, j) => (j === i ? { ...a, role: r } : a)));
-                          }}
-                          placeholder="Role"
-                          className="min-w-[80px] rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm focus:border-[#2383e6] focus:outline-none"
-                        />
-                      )}
-                      <select
-                        value={row.userId}
-                        onChange={(e) => {
-                          const u = e.target.value;
-                          if (isNew) {
-                            if (u && row.role) updateRoles([...assignList, { role: row.role, userId: u }]);
-                            else if (u) setNewRoleAssignment((p) => (p ? { ...p, userId: u } : null));
-                            else setNewRoleAssignment((p) => (p ? { ...p, userId: '' } : null));
-                          } else {
-                            updateRoles(assignList.map((a, j) => (j === i ? { ...a, userId: u } : a)));
-                          }
-                        }}
-                        className="min-w-[140px] rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm text-app-text-primary focus:border-[#2383e6] focus:outline-none"
-                      >
-                        <option value="">— Person —</option>
-                        {users.map((u) => (
-                          <option key={u._id} value={u._id}>{u.name || u.email}</option>
-                        ))}
-                      </select>
-                      <button type="button" onClick={() => (isNew ? setNewRoleAssignment(null) : updateRoles(assignList.filter((_, j) => j !== i)))} className="shrink-0 rounded-sm p-1 text-app-text-tertiary hover:bg-transparent hover:text-app-text-primary" aria-label="Remove">×</button>
-                    </div>
-                  );
-                };
-                return (
-                  <>
-                    <div className="flex w-full flex-wrap items-center gap-3">
-                      <IconPerson />
-                      <span className="w-20 shrink-0 text-sm text-app-text-secondary">Roles</span>
-                      {firstRow ? (
-                        <>
-                          <select
-                            value={firstRow.role && (predefined.has(firstRow.role as (typeof ROLE_OPTIONS)[number]) || custom.includes(firstRow.role)) ? firstRow.role : CUSTOM_ROLE_PLACEHOLDER}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              if (v === CUSTOM_ROLE_PLACEHOLDER) {
-                                if (rows.length === 1 && newRoleAssignment) setNewRoleAssignment((p) => (p ? { ...p, role: '' } : { role: '', userId: '' }));
-                                else updateRoles(assignList.map((a, j) => (j === 0 ? { ...a, role: '' } : a)));
-                              } else {
-                                if (rows.length === 1 && newRoleAssignment) setNewRoleAssignment((p) => (p ? { ...p, role: v } : { role: v, userId: '' }));
-                                else updateRoles(assignList.map((a, j) => (j === 0 ? { ...a, role: v } : a)));
-                              }
-                            }}
-                            className="min-w-[120px] rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm text-app-text-primary focus:border-[#2383e6] focus:outline-none"
-                          >
-                            {opts.map((r) => (
-                              <option key={r} value={r}>{r}</option>
-                            ))}
-                          </select>
-                          {(firstRow.role === '' || firstRow.role === CUSTOM_ROLE_PLACEHOLDER || (firstRow.role && !predefined.has(firstRow.role as (typeof ROLE_OPTIONS)[number]))) && (
-                            <input
-                              type="text"
-                              value={firstRow.role && firstRow.role !== CUSTOM_ROLE_PLACEHOLDER ? firstRow.role : ''}
-                              onChange={(e) => {
-                                const r = e.target.value.trim();
-                                if (rows.length === 1 && newRoleAssignment) setNewRoleAssignment((p) => (p ? { ...p, role: r } : { role: r, userId: '' }));
-                                else updateRoles(assignList.map((a, j) => (j === 0 ? { ...a, role: r } : a)));
-                              }}
-                              placeholder="Role"
-                              className="min-w-[80px] rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm focus:border-[#2383e6] focus:outline-none"
-                            />
-                          )}
-                          <select
-                            value={firstRow.userId}
-                            onChange={(e) => {
-                              const u = e.target.value;
-                              if (rows.length === 1 && newRoleAssignment) {
-                                if (u && firstRow.role) updateRoles([...assignList, { role: firstRow.role, userId: u }]);
-                                else if (u) setNewRoleAssignment((p) => (p ? { ...p, userId: u } : null));
-                                else setNewRoleAssignment((p) => (p ? { ...p, userId: '' } : null));
-                              } else {
-                                updateRoles(assignList.map((a, j) => (j === 0 ? { ...a, userId: u } : a)));
-                              }
-                            }}
-                            className="min-w-[140px] rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm text-app-text-primary focus:border-[#2383e6] focus:outline-none"
-                          >
-                            <option value="">— Person —</option>
-                            {users.map((u) => (
-                              <option key={u._id} value={u._id}>{u.name || u.email}</option>
-                            ))}
-                          </select>
-                          <button type="button" onClick={() => (rows.length === 1 && newRoleAssignment ? setNewRoleAssignment(null) : updateRoles(assignList.filter((_, j) => j !== 0)))} className="shrink-0 rounded-sm p-1 text-app-text-tertiary hover:bg-transparent hover:text-app-text-primary" aria-label="Remove">×</button>
-                        </>
-                      ) : (
-                        <button type="button" onClick={() => setNewRoleAssignment({ role: 'Producer', userId: '' })} className="rounded-sm border-0 px-3 py-1.5 text-sm font-medium text-app-text-secondary hover:border-[#37352f] hover:text-app-text-primary">Add role</button>
-                      )}
-                    </div>
-                    {rows.slice(1).map((row, i) => renderRoleRow(row, i + 1))}
-                    {rows.length > 0 && (
-                      <div className="border-0 pt-3 pl-[calc(1rem+5rem)]">
-                        {!newRoleAssignment && (
-                          <button type="button" onClick={() => setNewRoleAssignment({ role: 'Producer', userId: '' })} className="rounded-sm border-0 px-3 py-1.5 text-sm font-medium text-app-text-secondary hover:border-[#37352f] hover:text-app-text-primary">Add role</button>
-                        )}
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
+            {/* Owner (single owner per story) */}
+            <div className="flex items-center gap-3 py-2">
+              <IconPerson />
+              <span className="w-20 shrink-0 text-sm text-app-text-secondary">Owner</span>
+              <select
+                value={getUserId(story.ownerId ?? undefined) ?? ''}
+                onChange={(e) => handleUpdateStory({ ownerId: e.target.value || null })}
+                className="min-w-[140px] rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm text-app-text-primary focus:border-[#2383e6] focus:outline-none"
+              >
+                <option value="">— Person —</option>
+                {users.map((u) => (
+                  <option key={u._id} value={u._id}>{u.name || u.email}</option>
+                ))}
+              </select>
             </div>
             {/* Tags */}
             <div className="flex items-center gap-3 py-2">
@@ -945,42 +761,6 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
                     <input type="text" value={newChecklistItem} onChange={(e) => setNewChecklistItem(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddChecklistItem()} placeholder="Add item" className="min-w-0 flex-1 rounded-sm border-0 bg-transparent px-2 py-1 text-sm focus:border-[#2383e6] focus:outline-none" />
                     <button type="button" onClick={handleAddChecklistItem} disabled={!newChecklistItem.trim()} className="rounded-sm bg-transparent px-2 py-1 text-sm text-app-text-primary hover:bg-transparent disabled:opacity-50">Add</button>
                   </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-app-text-secondary">Role assignments</label>
-                  <p className="mb-2 text-xs text-app-text-tertiary">Manage role types in <Link to={`${basePath}/preferences`} className="text-[#2383e6] hover:underline">Preferences</Link>.</p>
-                  {(() => {
-                    const assignList = buildAssignmentsFromStory(story);
-                    const rows = newRoleAssignment ? [...assignList, newRoleAssignment] : assignList;
-                    const update = (next: RoleAssignment[]) => { handleUpdateStory({ teamMembers: next.filter((a) => a.role && a.userId) }); setNewRoleAssignment(null); };
-                    const predefined = new Set(ROLE_OPTIONS);
-                    const custom = Array.from(new Set([...loadCustomRoleTypes(), ...rows.map((r) => r.role).filter((r) => r && !predefined.has(r as (typeof ROLE_OPTIONS)[number]))])).sort();
-                    const removed = loadRemovedRoleTypes();
-                    const opts = [...ROLE_OPTIONS.filter((r) => !removed.includes(r)), ...custom.filter((r) => !removed.includes(r)), ...removed.filter((r) => rows.some((x) => x.role === r)), CUSTOM_ROLE_PLACEHOLDER];
-                    return (
-                      <div className="space-y-2">
-                        {rows.map((row, i) => {
-                          const isNew = newRoleAssignment && i === rows.length - 1;
-                          const showCustom = row.role === '' || row.role === CUSTOM_ROLE_PLACEHOLDER || (row.role && !predefined.has(row.role as (typeof ROLE_OPTIONS)[number]));
-                          const selVal = row.role && (predefined.has(row.role as (typeof ROLE_OPTIONS)[number]) || custom.includes(row.role)) ? row.role : CUSTOM_ROLE_PLACEHOLDER;
-                          return (
-                            <div key={isNew ? 'new' : `${row.role}-${row.userId}-${i}`} className="flex flex-wrap items-center gap-2">
-                              <select value={selVal} onChange={(e) => { const v = e.target.value; if (v === CUSTOM_ROLE_PLACEHOLDER) { if (isNew) setNewRoleAssignment((p) => (p ? { ...p, role: '' } : { role: '', userId: '' })); else update(assignList.map((a, j) => (j === i ? { ...a, role: '' } : a))); } else { if (isNew) setNewRoleAssignment((p) => (p ? { ...p, role: v } : { role: v, userId: '' })); else update(assignList.map((a, j) => (j === i ? { ...a, role: v } : a))); } }} className="rounded-sm border-0 bg-transparent px-2 py-1 text-sm focus:border-[#2383e6] focus:outline-none">
-                                {opts.map((r) => <option key={r} value={r}>{r}</option>)}
-                              </select>
-                              {showCustom && <input type="text" value={row.role && row.role !== CUSTOM_ROLE_PLACEHOLDER ? row.role : ''} onChange={(e) => { const r = e.target.value.trim(); if (isNew) setNewRoleAssignment((p) => (p ? { ...p, role: r } : { role: r, userId: '' })); else update(assignList.map((a, j) => (j === i ? { ...a, role: r } : a))); }} placeholder="Custom role" className="w-24 rounded-sm border-0 bg-transparent px-2 py-1 text-sm focus:border-[#2383e6] focus:outline-none" />}
-                              <select value={row.userId} onChange={(e) => { const u = e.target.value; if (isNew) { if (u && row.role) update([...assignList, { role: row.role, userId: u }]); else if (u) setNewRoleAssignment((p) => (p ? { ...p, userId: u } : null)); else setNewRoleAssignment((p) => (p ? { ...p, userId: '' } : null)); } else update(assignList.map((a, j) => (j === i ? { ...a, userId: u } : a))); }} className="rounded-sm border-0 bg-transparent px-2 py-1 text-sm focus:border-[#2383e6] focus:outline-none">
-                                <option value="">— Person —</option>
-                                {users.map((u) => <option key={u._id} value={u._id}>{u.name || u.email}</option>)}
-                              </select>
-                              <button type="button" onClick={() => { if (isNew) setNewRoleAssignment(null); else update(assignList.filter((_, j) => j !== i)); }} className="text-app-text-tertiary hover:text-app-text-primary" aria-label="Remove">×</button>
-                            </div>
-                          );
-                        })}
-                        {!newRoleAssignment && <button type="button" onClick={() => setNewRoleAssignment({ role: 'Producer', userId: '' })} className="text-sm text-app-text-tertiary hover:text-app-text-primary">+ Add assignment</button>}
-                      </div>
-                    );
-                  })()}
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-app-text-secondary">Fact-checks</label>

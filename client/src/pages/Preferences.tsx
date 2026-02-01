@@ -13,7 +13,7 @@ import {
 } from '../utils/pieceTypesPreferences';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { useAuthStore } from '../stores/authStore';
-import { workspacesApi, type WorkspaceMemberItem } from '../utils/workspacesApi';
+import { workspacesApi, type WorkspaceMemberItem, type PendingMemberItem } from '../utils/workspacesApi';
 import { ModalShell } from '../components/ModalShell';
 
 const ROLE_OPTIONS = ['Producer', 'Editor', 'Videographer', 'Reporter', 'Researcher'] as const;
@@ -348,6 +348,10 @@ export default function Preferences() {
   const [membersLoading, setMembersLoading] = useState(false);
   const [membersError, setMembersError] = useState<string | null>(null);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
+  const [pendingMembers, setPendingMembers] = useState<PendingMemberItem[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [pendingError, setPendingError] = useState<string | null>(null);
+  const [pendingActionId, setPendingActionId] = useState<string | null>(null);
 
   const fetchMembers = useCallback(async () => {
     if (!currentWorkspace?._id || !isOwner) return;
@@ -364,9 +368,61 @@ export default function Preferences() {
     }
   }, [currentWorkspace?._id, isOwner]);
 
+  const fetchPendingMembers = useCallback(async () => {
+    if (!currentWorkspace?._id || !isOwner) return;
+    setPendingLoading(true);
+    setPendingError(null);
+    try {
+      const list = await workspacesApi.listPendingMembers(currentWorkspace._id);
+      setPendingMembers(list);
+    } catch (e) {
+      setPendingError(e instanceof Error ? e.message : 'Failed to load pending requests');
+      setPendingMembers([]);
+    } finally {
+      setPendingLoading(false);
+    }
+  }, [currentWorkspace?._id, isOwner]);
+
   useEffect(() => {
     if (isOwner && currentWorkspace?._id) fetchMembers();
   }, [isOwner, currentWorkspace?._id, fetchMembers]);
+
+  useEffect(() => {
+    if (isOwner && currentWorkspace?._id) fetchPendingMembers();
+  }, [isOwner, currentWorkspace?._id, fetchPendingMembers]);
+
+  const handleApprovePending = useCallback(
+    async (userId: string) => {
+      if (!currentWorkspace?._id) return;
+      setPendingActionId(userId);
+      try {
+        await workspacesApi.approvePendingMember(currentWorkspace._id, userId);
+        setPendingMembers((prev) => prev.filter((m) => m.userId !== userId));
+        fetchMembers();
+      } catch {
+        setPendingError('Failed to approve');
+      } finally {
+        setPendingActionId(null);
+      }
+    },
+    [currentWorkspace?._id, fetchMembers]
+  );
+
+  const handleRejectPending = useCallback(
+    async (userId: string) => {
+      if (!currentWorkspace?._id) return;
+      setPendingActionId(userId);
+      try {
+        await workspacesApi.rejectPendingMember(currentWorkspace._id, userId);
+        setPendingMembers((prev) => prev.filter((m) => m.userId !== userId));
+      } catch {
+        setPendingError('Failed to reject');
+      } finally {
+        setPendingActionId(null);
+      }
+    },
+    [currentWorkspace?._id]
+  );
 
   const handleMemberRoleChange = useCallback(
     async (userId: string, newRole: string) => {
@@ -678,6 +734,57 @@ export default function Preferences() {
         )}
 
         {isOwner && (
+          <>
+          <section className="series-page-section" aria-labelledby="prefs-pending-heading">
+            <h2 id="prefs-pending-heading" className="series-page-section-title">Pending join requests</h2>
+            <p className="archive-section-desc">
+              Users who joined via an invite link are listed here. Approve or reject each request.
+            </p>
+            {pendingError && (
+              <p className="preferences-danger-error mb-3" role="alert">
+                {pendingError}
+              </p>
+            )}
+            {pendingLoading ? (
+              <p className="preferences-field-muted">Loading…</p>
+            ) : pendingMembers.length === 0 ? (
+              <p className="preferences-field-muted">No pending requests.</p>
+            ) : (
+              <ul className="preferences-members-list">
+                {pendingMembers.map((m) => (
+                  <li key={m._id} className="preferences-members-row">
+                    <div className="preferences-members-info">
+                      <span className="preferences-members-name">
+                        {m.name || m.email || 'Unknown'}
+                      </span>
+                      {m.email && m.name && (
+                        <span className="preferences-members-email">{m.email}</span>
+                      )}
+                      <span className="preferences-field-muted text-xs">Requested as {m.role}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleApprovePending(m.userId)}
+                        disabled={pendingActionId === m.userId}
+                        className="btn btn-primary"
+                      >
+                        {pendingActionId === m.userId ? 'Approving…' : 'Approve'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRejectPending(m.userId)}
+                        disabled={pendingActionId === m.userId}
+                        className="btn btn-secondary"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
           <section className="series-page-section" aria-labelledby="prefs-members-heading">
             <h2 id="prefs-members-heading" className="series-page-section-title">Workspace members</h2>
             <p className="archive-section-desc">
@@ -728,6 +835,7 @@ export default function Preferences() {
               </ul>
             )}
           </section>
+          </>
         )}
 
         <div className="preferences-action-bar-bottom">

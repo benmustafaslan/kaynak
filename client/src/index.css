@@ -1211,6 +1211,41 @@
   box-shadow: none;
 }
 
+/* Deadline view – list of pieces by deadline */
+.deadline-view {
+  padding: var(--space-2) 40px var(--space-6);
+  max-width: 1440px;
+  margin: 0 auto var(--space-6);
+  margin-left: 40px;
+  margin-right: 40px;
+}
+.deadline-view-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.deadline-view-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-text-tertiary);
+  margin: 0 0 8px 0;
+}
+.deadline-view-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.deadline-view-row {
+  margin: 0;
+}
+
+/* Calendar test: compact piece row in day cells */
+.calendar-piece-row:hover {
+  background: var(--app-bg-secondary);
+}
+
 /* State strip: sticky nav, minimal (no box) */
 .kanban-state-boxes {
   position: sticky;

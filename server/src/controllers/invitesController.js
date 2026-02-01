@@ -23,6 +23,7 @@ export const accept = async (req, res, next) => {
     });
     if (existing) {
       const workspace = await Workspace.findById(invite.workspaceId).lean();
+      const alreadyActive = !existing.status || existing.status === 'active';
       return res.json({
         workspace: {
           _id: workspace._id,
@@ -31,12 +32,14 @@ export const accept = async (req, res, next) => {
           role: existing.role,
         },
         alreadyMember: true,
+        pendingApproval: !alreadyActive,
       });
     }
     await WorkspaceMember.create({
       workspaceId: invite.workspaceId,
       userId: req.user._id,
       role: invite.role,
+      status: 'pending',
     });
     const workspace = await Workspace.findById(invite.workspaceId).lean();
     res.json({
@@ -47,6 +50,7 @@ export const accept = async (req, res, next) => {
         role: invite.role,
       },
       alreadyMember: false,
+      pendingApproval: true,
     });
   } catch (err) {
     next(err);

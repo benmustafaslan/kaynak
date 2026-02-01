@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   BOARD_PIECE_STATES,
   BOARD_PIECE_STATE_LABELS,
@@ -10,6 +10,7 @@ import {
 import { getPieceTypeDisplayLabel } from '../../utils/pieceTypesPreferences';
 import { NewPieceModal } from './NewPieceModal';
 import { PieceCard } from './PieceCard';
+import { PiecesCalendarView } from './PiecesCalendarView';
 import { piecesApi } from '../../utils/piecesApi';
 
 function KanbanColumnHeader({ state, count }: { state: BoardPieceState; count: number }) {
@@ -29,20 +30,45 @@ const FILTER_LABELS: Record<Filter, string> = {
   mine: 'My pieces',
 };
 
+type ViewMode = 'kanban' | 'deadline' | 'calendar';
+const VIEW_LABELS: Record<ViewMode, string> = {
+  kanban: 'By stage',
+  deadline: 'By deadline',
+  calendar: 'Calendar',
+};
+
 export type KanbanBoardProps = {
   /** When provided (e.g. from Board page), filters and this content are shown in one row */
   toolbarRight?: React.ReactNode;
 };
 
+const VIEW_PARAM = 'view';
+
 export function KanbanBoard({ toolbarRight }: KanbanBoardProps = {}) {
   const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const basePath = workspaceSlug ? `/w/${workspaceSlug}` : '';
   const [pieces, setPieces] = useState<Piece[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const viewFromUrl = searchParams.get(VIEW_PARAM) as ViewMode | null;
+  const viewMode: ViewMode =
+    viewFromUrl && Object.keys(VIEW_LABELS).includes(viewFromUrl) ? viewFromUrl : 'kanban';
+  const setViewMode = useCallback(
+    (next: ViewMode | ((prev: ViewMode) => ViewMode)) => {
+      const value = typeof next === 'function' ? next(viewMode) : next;
+      const nextParams = new URLSearchParams(searchParams);
+      if (value === 'kanban') nextParams.delete(VIEW_PARAM);
+      else nextParams.set(VIEW_PARAM, value);
+      setSearchParams(nextParams, { replace: true });
+    },
+    [viewMode, searchParams, setSearchParams]
+  );
   const [filter, setFilter] = useState<Filter>('all');
   const [formatFilter, setFormatFilter] = useState<string>('');
   const [filtersMenuOpen, setFiltersMenuOpen] = useState(false);
+  const [viewDropdownOpen, setViewDropdownOpen] = useState(false);
+  const viewDropdownRef = useRef<HTMLDivElement>(null);
   const filtersMenuRef = useRef<HTMLDivElement>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverState, setDragOverState] = useState<BoardPieceState | null>(null);
@@ -60,6 +86,15 @@ export function KanbanBoard({ toolbarRight }: KanbanBoardProps = {}) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [filtersMenuOpen]);
+
+  useEffect(() => {
+    if (!viewDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (viewDropdownRef.current && !viewDropdownRef.current.contains(e.target as Node)) setViewDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [viewDropdownOpen]);
 
   const fetchPieces = useCallback(async () => {
     setLoading(true);
@@ -136,6 +171,15 @@ export function KanbanBoard({ toolbarRight }: KanbanBoardProps = {}) {
     return Array.from(set).sort();
   }, [pieces]);
 
+  /** For deadline view: pieces with deadline first (ascending), then no-deadline. */
+  const piecesByDeadline = useMemo(() => {
+    const withDeadline = pieces
+      .filter((p) => p.deadline)
+      .sort((a, b) => new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime());
+    const noDeadline = pieces.filter((p) => !p.deadline);
+    return { withDeadline, noDeadline };
+  }, [pieces]);
+
   const handleDragStart = (_e: React.DragEvent, piece: Piece) => {
     setDraggingId(piece._id);
   };
@@ -195,8 +239,38 @@ export function KanbanBoard({ toolbarRight }: KanbanBoardProps = {}) {
 
   return (
     <>
-      <div className={toolbarRight ? 'board-toolbar' : 'board-filters'}>
+      <div className="board-toolbar">
         <div className="board-filters-inner">
+          <div className="board-filters-dropdown-wrap" ref={viewDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setViewDropdownOpen((o) => !o)}
+              className="btn btn-secondary board-filter-btn"
+              style={{ padding: '6px 12px', fontSize: 13 }}
+              aria-label="View"
+              aria-expanded={viewDropdownOpen}
+            >
+              {VIEW_LABELS[viewMode]} ▾
+            </button>
+            {viewDropdownOpen && (
+              <div className="board-filters-menu" role="menu">
+                {(Object.keys(VIEW_LABELS) as ViewMode[]).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    role="menuitem"
+                    className={`board-filters-menu-item ${viewMode === v ? 'active' : ''}`}
+                    onClick={() => {
+                      setViewMode(v);
+                      setViewDropdownOpen(false);
+                    }}
+                  >
+                    {VIEW_LABELS[v]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {(Object.keys(FILTER_LABELS) as Filter[]).map((f) => (
             <button
               key={f}
@@ -284,6 +358,7 @@ export function KanbanBoard({ toolbarRight }: KanbanBoardProps = {}) {
               format: data.format,
               headline: data.headline,
               state: data.state,
+              deadline: data.deadline ?? undefined,
             });
             await fetchPieces();
           }}
@@ -315,6 +390,53 @@ export function KanbanBoard({ toolbarRight }: KanbanBoardProps = {}) {
           <Link to={`${basePath}/stories`} className="btn btn-ghost">
             Stories
           </Link>
+        </div>
+      ) : viewMode === 'calendar' ? (
+        <PiecesCalendarView
+          pieces={pieces}
+          basePath={basePath}
+          returnPath={`${basePath}/board${viewMode !== 'kanban' ? `?view=${viewMode}` : ''}`}
+        />
+      ) : viewMode === 'deadline' ? (
+        <div className="deadline-view">
+          <div className="deadline-view-sections">
+            {piecesByDeadline.withDeadline.length > 0 && (
+              <section className="deadline-view-section" aria-label="Pieces with deadline">
+                <h3 className="deadline-view-section-title">By deadline</h3>
+                <ul className="deadline-view-list">
+                  {piecesByDeadline.withDeadline.map((piece) => (
+                    <li key={piece._id} className="deadline-view-row">
+                      <PieceCard
+                        piece={piece}
+                        isDragging={draggingId === piece._id}
+                        onDragStart={handleDragStart}
+                        variant="row"
+                        showDeadline
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {piecesByDeadline.noDeadline.length > 0 && (
+              <section className="deadline-view-section" aria-label="Pieces without deadline">
+                <h3 className="deadline-view-section-title">No deadline</h3>
+                <ul className="deadline-view-list">
+                  {piecesByDeadline.noDeadline.map((piece) => (
+                    <li key={piece._id} className="deadline-view-row">
+                      <PieceCard
+                        piece={piece}
+                        isDragging={draggingId === piece._id}
+                        onDragStart={handleDragStart}
+                        variant="row"
+                        showDeadline={false}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
         </div>
       ) : (
         <div className="kanban-container">

@@ -22,20 +22,26 @@ function generateRandomSlug(length = 12) {
     .slice(0, length) || crypto.randomBytes(8).toString('hex');
 }
 
-/** GET /workspaces – list workspaces the current user is a member of */
+/** Active members can access the workspace; pending cannot until owner approves. */
+function isActiveMember(m) {
+  return !m.status || m.status === 'active';
+}
+
+/** GET /workspaces – list workspaces the current user is an active member of */
 export const listMine = async (req, res, next) => {
   try {
     const memberships = await WorkspaceMember.find({ userId: req.user._id })
       .populate('workspaceId')
       .lean();
-    const workspaces = memberships
+    const activeMemberships = memberships.filter(isActiveMember);
+    const workspaces = activeMemberships
       .map((m) => m.workspaceId)
       .filter(Boolean)
       .map((w) => ({
         _id: w._id,
         name: w.name,
         slug: w.slug,
-        role: memberships.find((m) => m.workspaceId?._id?.toString() === w._id?.toString())?.role,
+        role: activeMemberships.find((m) => m.workspaceId?._id?.toString() === w._id?.toString())?.role,
         createdAt: w.createdAt,
       }));
     res.json({ workspaces });
@@ -62,6 +68,9 @@ export const getBySlug = async (req, res, next) => {
     if (!membership) {
       return res.status(403).json({ error: 'Not a member of this workspace' });
     }
+    if (!isActiveMember(membership)) {
+      return res.status(403).json({ error: 'Your request to join this workspace is pending owner approval' });
+    }
     res.json({
       workspace: {
         _id: workspace._id,
@@ -76,7 +85,7 @@ export const getBySlug = async (req, res, next) => {
   }
 };
 
-/** GET /workspaces/:id – get workspace by id (must be member) */
+/** GET /workspaces/:id – get workspace by id (must be active member) */
 export const getById = async (req, res, next) => {
   try {
     const workspace = await Workspace.findById(req.params.id).lean();
@@ -89,6 +98,9 @@ export const getById = async (req, res, next) => {
     }).lean();
     if (!membership) {
       return res.status(403).json({ error: 'Not a member of this workspace' });
+    }
+    if (!isActiveMember(membership)) {
+      return res.status(403).json({ error: 'Your request to join this workspace is pending owner approval' });
     }
     res.json({
       workspace: {
@@ -152,11 +164,14 @@ export const listMembers = async (req, res, next) => {
       workspaceId,
       userId: req.user._id,
     }).lean();
-    if (!myMembership) {
+    if (!myMembership || !isActiveMember(myMembership)) {
       return res.status(403).json({ error: 'Not a member of this workspace' });
     }
 
-    const members = await WorkspaceMember.find({ workspaceId })
+    const members = await WorkspaceMember.find({
+      workspaceId,
+      $or: [{ status: 'active' }, { status: { $exists: false } }],
+    })
       .populate('userId', 'name email')
       .sort({ createdAt: 1 })
       .lean();
@@ -214,6 +229,9 @@ export const updateMemberRole = async (req, res, next) => {
     if (!targetMembership) {
       return res.status(404).json({ error: 'User is not a member of this workspace' });
     }
+    if (targetMembership.status === 'pending') {
+      return res.status(400).json({ error: 'Pending members must be approved first' });
+    }
     targetMembership.role = newRole;
     await targetMembership.save();
     res.json({ member: { userId: targetMembership.userId, role: targetMembership.role } });
@@ -222,7 +240,114 @@ export const updateMemberRole = async (req, res, next) => {
   }
 };
 
-/** GET /workspaces/:id/invite – get current (latest non-expired) invite link (owner or admin only) */
+/** GET /workspaces/:id/pending-members – list members awaiting owner approval (owner only) */
+export const listPendingMembers = async (req, res, next) => {
+  try {
+    const workspaceId = req.params.id;
+    const workspace = await Workspace.findById(workspaceId).lean();
+    if (!workspace) {
+      return res.status(404).json({ error: 'Workspace not found' });
+    }
+    const myMembership = await WorkspaceMember.findOne({
+      workspaceId,
+      userId: req.user._id,
+    }).lean();
+    if (!myMembership || !isActiveMember(myMembership)) {
+      return res.status(403).json({ error: 'Not a member of this workspace' });
+    }
+    if (myMembership.role !== 'owner') {
+      return res.status(403).json({ error: 'Only workspace owners can view pending join requests' });
+    }
+    const pending = await WorkspaceMember.find({
+      workspaceId,
+      status: 'pending',
+    })
+      .populate('userId', 'name email')
+      .sort({ createdAt: 1 })
+      .lean();
+    const list = pending.map((m) => ({
+      _id: m._id,
+      userId: m.userId?._id,
+      name: m.userId?.name,
+      email: m.userId?.email,
+      role: m.role,
+      requestedAt: m.createdAt,
+    }));
+    res.json({ pendingMembers: list });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** POST /workspaces/:id/pending-members/:userId/approve – approve a pending member (owner only) */
+export const approvePendingMember = async (req, res, next) => {
+  try {
+    const workspaceId = req.params.id;
+    const targetUserId = req.params.userId;
+    if (!mongoose.Types.ObjectId.isValid(workspaceId) || !mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({ error: 'Invalid workspace or user id' });
+    }
+    const workspace = await Workspace.findById(workspaceId).lean();
+    if (!workspace) {
+      return res.status(404).json({ error: 'Workspace not found' });
+    }
+    const myMembership = await WorkspaceMember.findOne({
+      workspaceId,
+      userId: req.user._id,
+    }).lean();
+    if (!myMembership || myMembership.role !== 'owner') {
+      return res.status(403).json({ error: 'Only workspace owners can approve join requests' });
+    }
+    const target = await WorkspaceMember.findOne({
+      workspaceId,
+      userId: targetUserId,
+      status: 'pending',
+    });
+    if (!target) {
+      return res.status(404).json({ error: 'Pending join request not found' });
+    }
+    target.status = 'active';
+    await target.save();
+    res.json({ member: { userId: target.userId, role: target.role, status: 'active' } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** POST /workspaces/:id/pending-members/:userId/reject – reject a pending member (owner only) */
+export const rejectPendingMember = async (req, res, next) => {
+  try {
+    const workspaceId = req.params.id;
+    const targetUserId = req.params.userId;
+    if (!mongoose.Types.ObjectId.isValid(workspaceId) || !mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({ error: 'Invalid workspace or user id' });
+    }
+    const workspace = await Workspace.findById(workspaceId).lean();
+    if (!workspace) {
+      return res.status(404).json({ error: 'Workspace not found' });
+    }
+    const myMembership = await WorkspaceMember.findOne({
+      workspaceId,
+      userId: req.user._id,
+    }).lean();
+    if (!myMembership || myMembership.role !== 'owner') {
+      return res.status(403).json({ error: 'Only workspace owners can reject join requests' });
+    }
+    const result = await WorkspaceMember.deleteOne({
+      workspaceId,
+      userId: targetUserId,
+      status: 'pending',
+    });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Pending join request not found' });
+    }
+    res.json({ rejected: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** GET /workspaces/:id/invite – get current (latest non-expired) invite link (any active member) */
 export const getCurrentInvite = async (req, res, next) => {
   try {
     const workspaceId = req.params.id;
@@ -234,8 +359,8 @@ export const getCurrentInvite = async (req, res, next) => {
       workspaceId,
       userId: req.user._id,
     }).lean();
-    if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
-      return res.status(403).json({ error: 'Only owners and admins can view the invite link' });
+    if (!membership || !isActiveMember(membership)) {
+      return res.status(403).json({ error: 'Not a member of this workspace' });
     }
     const now = new Date();
     const invite = await WorkspaceInvite.findOne({
@@ -254,7 +379,7 @@ export const getCurrentInvite = async (req, res, next) => {
   }
 };
 
-/** POST /workspaces/:id/invites – create invite link (owner or admin only) */
+/** POST /workspaces/:id/invites – create invite link (any active member) */
 export const createInvite = async (req, res, next) => {
   try {
     const workspaceId = req.params.id;
@@ -266,11 +391,8 @@ export const createInvite = async (req, res, next) => {
       workspaceId,
       userId: req.user._id,
     }).lean();
-    if (!membership) {
+    if (!membership || !isActiveMember(membership)) {
       return res.status(403).json({ error: 'Not a member of this workspace' });
-    }
-    if (membership.role !== 'owner' && membership.role !== 'admin') {
-      return res.status(403).json({ error: 'Only owners and admins can create invites' });
     }
     const role = req.body.role && ['owner', 'admin', 'editor', 'viewer'].includes(req.body.role)
       ? req.body.role

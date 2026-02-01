@@ -1,24 +1,9 @@
 import mongoose from 'mongoose';
 
-const deadlineSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  date: { type: Date, required: true },
-  notifications: {
-    hours_24: { type: Boolean, default: false },
-    hours_1: { type: Boolean, default: false },
-  },
-  completed: { type: Boolean, default: false },
-}, { _id: false });
-
 const checklistItemSchema = new mongoose.Schema({
   text: { type: String, required: true },
   completed: { type: Boolean, default: false },
   order: { type: Number, default: 0 },
-}, { _id: false });
-
-const teamMemberSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  role: { type: String, required: true },
 }, { _id: false });
 
 const stateHistoryEntrySchema = new mongoose.Schema(
@@ -44,9 +29,11 @@ const storySchema = new mongoose.Schema(
     },
     state: {
       type: String,
-      enum: ['idea', 'research', 'scripting', 'multimedia', 'finalization', 'published', 'archived'],
+      enum: ['idea', 'visible', 'archived'],
       default: 'idea',
     },
+    /** Single owner: the person responsible for this story (idea). Can be reassigned. */
+    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     approved: { type: Boolean, default: false },
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     approvedAt: { type: Date, default: null },
@@ -54,10 +41,6 @@ const storySchema = new mongoose.Schema(
     rejectionReason: { type: String, default: null },
     parkedUntil: { type: Date, default: null },
     workflowId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workflow', default: null },
-    producer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-    editors: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    teamMembers: [teamMemberSchema],
-    deadlines: [deadlineSchema],
     currentScriptVersion: { type: Number, default: 0 },
     researchNotes: { type: String, default: '' },
     categories: [String],
@@ -86,9 +69,9 @@ const storySchema = new mongoose.Schema(
 
 storySchema.index({ state: 1, deletedAt: 1 });
 storySchema.index({ approved: 1, state: 1, deletedAt: 1 });
+storySchema.index({ ownerId: 1, deletedAt: 1 });
 storySchema.index({ createdBy: 1, deletedAt: 1 });
 storySchema.index({ headline: 'text', description: 'text' });
-storySchema.index({ deadlines: 1 });
 storySchema.index({ categories: 1 });
 storySchema.index({ parentStoryId: 1, deletedAt: 1 });
 storySchema.index({ workspaceId: 1, deletedAt: 1 });

@@ -7,7 +7,7 @@ import { SeriesSearchBar } from './SeriesSearchBar';
 
 interface NewStoryModalProps {
   onClose: () => void;
-  onSubmit: (data: { headline: string; description: string; categories: string[]; kind?: 'story' | 'parent'; parentStoryId?: string }) => Promise<void>;
+  onSubmit: (data: { headline: string; description: string; categories: string[]; state?: string; kind?: 'story' | 'parent'; parentStoryId?: string }) => Promise<void>;
   /** Override modal title (e.g. "New Idea") */
   title?: string;
   /** Override submit button label (e.g. "Add idea") */
@@ -20,7 +20,7 @@ interface NewStoryModalProps {
 
 const MIN_DESCRIPTION = 3;
 
-type StartOption = 'agenda' | 'research';
+type StartOption = 'agenda' | 'visible';
 
 export function NewStoryModal({ onClose, onSubmit, title: titleProp, submitLabel, isIdea, isPackage }: NewStoryModalProps) {
   const title = titleProp ?? (isPackage ? 'New story package' : 'New Story');
@@ -29,7 +29,8 @@ export function NewStoryModal({ onClose, onSubmit, title: titleProp, submitLabel
   const [headline, setHeadline] = useState('');
   const [description, setDescription] = useState('');
   const [categoriesText, setCategoriesText] = useState('');
-  const [startOption, setStartOption] = useState<StartOption>('research');
+  /** When creating a story (not an idea), default to visible so it goes to the board. When adding an idea, default to agenda. */
+  const [startOption, setStartOption] = useState<StartOption>(isIdea ? 'agenda' : 'visible');
   const [menuOpen, setMenuOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -77,6 +78,7 @@ export function NewStoryModal({ onClose, onSubmit, title: titleProp, submitLabel
         headline: headline.trim(),
         description: description.trim() || (isPackage ? 'Package' : ''),
         categories,
+        ...(showStartChoice ? { state: startOption === 'visible' ? 'visible' : 'idea' } : {}),
         ...(isPackage ? { kind: 'parent' as const } : {}),
         ...(!isPackage && selectedSeriesId ? { parentStoryId: selectedSeriesId } : {}),
       });
@@ -166,7 +168,7 @@ export function NewStoryModal({ onClose, onSubmit, title: titleProp, submitLabel
                     borderBottomRightRadius: 0,
                   }}
                 >
-                  {submitting ? 'Creating…' : startOption === 'research' ? 'Start in Research' : 'Submit to Agenda Tracking'}
+                  {submitting ? 'Creating…' : startOption === 'visible' ? 'Start as Visible' : 'Submit to Agenda Tracking'}
                 </button>
                 <button
                   type="button"
@@ -208,7 +210,7 @@ export function NewStoryModal({ onClose, onSubmit, title: titleProp, submitLabel
                       <button
                         type="button"
                         role="menuitem"
-                        onClick={() => { setStartOption('research'); setMenuOpen(false); }}
+                        onClick={() => { setStartOption('visible'); setMenuOpen(false); }}
                         style={{
                           display: 'block',
                           width: '100%',
@@ -216,13 +218,13 @@ export function NewStoryModal({ onClose, onSubmit, title: titleProp, submitLabel
                           textAlign: 'left',
                           border: 'none',
                           borderRadius: 4,
-                          background: startOption === 'research' ? 'var(--light-gray)' : 'transparent',
+                          background: startOption === 'visible' ? 'var(--light-gray)' : 'transparent',
                           cursor: 'pointer',
                           fontSize: 14,
                           fontWeight: 500,
                         }}
                       >
-                        Start in Research
+                        Start as Visible (on board)
                       </button>
                     </li>
                     <li role="none">

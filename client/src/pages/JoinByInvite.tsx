@@ -37,8 +37,13 @@ export default function JoinByInvite() {
       setError('');
       invitesApi.accept(tokenFromUrl)
         .then(async (res) => {
-          const { fetchWorkspaces: fetch, setCurrentBySlug: setCurrent } = useWorkspaceStore.getState();
+          const { fetchWorkspaces: fetch } = useWorkspaceStore.getState();
           await fetch();
+          if (res.pendingApproval) {
+            navigate('/w', { replace: true, state: { pendingJoin: res.workspace.name } });
+            return;
+          }
+          const { setCurrentBySlug: setCurrent } = useWorkspaceStore.getState();
           await setCurrent(res.workspace.slug);
           navigate('/board', { replace: true });
         })
@@ -62,6 +67,10 @@ export default function JoinByInvite() {
     try {
       const res = await invitesApi.accept(rawToken);
       await fetchWorkspaces();
+      if (res.pendingApproval) {
+        navigate('/w', { replace: true, state: { pendingJoin: res.workspace.name } });
+        return;
+      }
       await setCurrentBySlug(res.workspace.slug);
       navigate('/board', { replace: true });
     } catch (err) {

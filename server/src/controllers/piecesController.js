@@ -1,9 +1,26 @@
 import Story from '../models/Story.js';
 import Piece from '../models/Piece.js';
+import { DEFAULT_PIECE_STATES, DEFAULT_BOARD_PIECE_STATES } from '../config/pieceWorkflow.js';
 
 function normalizeState(s) {
   if (typeof s !== 'string') return s;
   return s.toLowerCase();
+}
+
+/** Build { state: Date } from request deadlines; only valid state keys and parseable dates. */
+function normalizeDeadlinesByState(deadlines) {
+  if (!deadlines || typeof deadlines !== 'object') return {};
+  const out = {};
+  DEFAULT_BOARD_PIECE_STATES.forEach((state) => {
+    const v = deadlines[state];
+    if (v == null || v === '') {
+      out[state] = null;
+    } else {
+      const d = new Date(v);
+      if (!Number.isNaN(d.getTime())) out[state] = d;
+    }
+  });
+  return out;
 }
 
 /** List all pieces (for Board). Optional query: state, format, storyId, myStories, standalone, rejected. */
@@ -31,25 +48,19 @@ export const listAll = async (req, res, next) => {
       query.rejectedAt = { $ne: null };
     }
     if (myStories === 'true' || myStories === true) {
-      const storyQuery = {
-        deletedAt: null,
-        $or: [
-          { producer: userId },
-          { editors: userId },
-          { 'teamMembers.userId': userId },
-        ],
-      };
-      if (req.workspaceId) {
-        storyQuery.workspaceId = req.workspaceId;
-      }
-      const stories = await Story.find(storyQuery, { _id: 1 }).lean();
-      const storyIds = stories.map((s) => s._id);
-      query.linkedStoryIds = { $in: storyIds };
+      query.$or = [
+        { producer: userId },
+        { editors: userId },
+        { 'teamMembers.userId': userId },
+      ];
     }
     const pieces = await Piece.find(query)
       .sort({ updatedAt: -1 })
       .populate('linkedStoryIds', 'headline researchNotes')
       .populate('createdBy', 'name email')
+      .populate('producer', 'name email')
+      .populate('editors', 'name email')
+      .populate('teamMembers.userId', 'name email')
       .lean();
     res.json({ pieces });
   } catch (err) {
@@ -72,6 +83,9 @@ export const listByStory = async (req, res, next) => {
       .sort({ createdAt: 1 })
       .populate('linkedStoryIds', 'headline researchNotes')
       .populate('createdBy', 'name email')
+      .populate('producer', 'name email')
+      .populate('editors', 'name email')
+      .populate('teamMembers.userId', 'name email')
       .lean();
     res.json({ pieces });
   } catch (err) {
@@ -89,6 +103,9 @@ export const getOne = async (req, res, next) => {
     const piece = await Piece.findOne(pieceQuery)
       .populate('linkedStoryIds', 'headline researchNotes')
       .populate('createdBy', 'name email')
+      .populate('producer', 'name email')
+      .populate('editors', 'name email')
+      .populate('teamMembers.userId', 'name email')
       .lean();
     if (!piece) {
       return res.status(404).json({ error: 'Piece not found' });
@@ -103,7 +120,7 @@ export const getOne = async (req, res, next) => {
 export const create = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const { format, headline, state, linkedStoryIds } = req.body;
+    const { format, headline, state, linkedStoryIds, producer, editors, teamMembers } = req.body;
     const formatStr = format && String(format).trim();
     if (!formatStr || formatStr.length > 64) {
       return res.status(400).json({ error: 'format is required and must be 1–64 characters' });
@@ -114,17 +131,36 @@ export const create = async (req, res, next) => {
     const linkIds = Array.isArray(linkedStoryIds)
       ? linkedStoryIds.filter((id) => id && String(id).trim()).map((id) => String(id).trim())
       : [];
+    const { deadline, deadlines } = req.body;
+    const deadlineByState = normalizeDeadlinesByState(deadlines);
+    const producerId = producer ? String(producer).trim() || null : null;
+    const editorIds = Array.isArray(editors) ? editors.filter((id) => id && String(id).trim()).map((id) => String(id).trim()).slice(0, 20) : [];
+    const teamMembersNorm = teamMembers && Array.isArray(teamMembers)
+      ? teamMembers
+          .filter((m) => m && (m.userId || m.user_id))
+          .map((m) => ({ userId: m.userId ?? m.user_id, role: String(m.role || '').trim().slice(0, 100) }))
+          .filter((m) => m.role && m.userId)
+          .slice(0, 50)
+      : [];
     const piece = await Piece.create({
       workspaceId: req.workspaceId || undefined,
       linkedStoryIds: linkIds,
       format: formatStr.trim().toLowerCase().slice(0, 64),
       headline: headline.trim().slice(0, 500),
-      state: state && ['scripting', 'multimedia', 'finalization', 'published', 'archived'].includes(normalizeState(state)) ? normalizeState(state) : 'scripting',
+      state: state && DEFAULT_PIECE_STATES.includes(normalizeState(state)) ? normalizeState(state) : 'scripting',
       createdBy: userId,
+      producer: producerId || null,
+      editors: editorIds,
+      teamMembers: teamMembersNorm,
+      ...(deadline ? { deadline: new Date(deadline) } : {}),
+      ...(Object.keys(deadlineByState).length ? { deadlines: deadlineByState } : {}),
     });
     const populated = await Piece.findById(piece._id)
       .populate('linkedStoryIds', 'headline researchNotes')
       .populate('createdBy', 'name email')
+      .populate('producer', 'name email')
+      .populate('editors', 'name email')
+      .populate('teamMembers.userId', 'name email')
       .lean();
     res.status(201).json(populated);
   } catch (err) {
@@ -144,7 +180,7 @@ export const createFromStory = async (req, res, next) => {
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
     }
-    const { format, headline, state } = req.body;
+    const { format, headline, state, deadline, deadlines, producer, editors, teamMembers } = req.body;
     const formatStr = format && String(format).trim();
     if (!formatStr || formatStr.length > 64) {
       return res.status(400).json({ error: 'format is required and must be 1–64 characters' });
@@ -153,18 +189,36 @@ export const createFromStory = async (req, res, next) => {
       return res.status(400).json({ error: 'headline is required' });
     }
     const storyIdStr = String(req.params.storyId);
+    const deadlineByState = normalizeDeadlinesByState(deadlines);
+    const producerId = producer ? String(producer).trim() || null : null;
+    const editorIds = Array.isArray(editors) ? editors.filter((id) => id && String(id).trim()).map((id) => String(id).trim()).slice(0, 20) : [];
+    const teamMembersNorm = teamMembers && Array.isArray(teamMembers)
+      ? teamMembers
+          .filter((m) => m && (m.userId || m.user_id))
+          .map((m) => ({ userId: m.userId ?? m.user_id, role: String(m.role || '').trim().slice(0, 100) }))
+          .filter((m) => m.role && m.userId)
+          .slice(0, 50)
+      : [];
     const piece = await Piece.create({
       workspaceId: req.workspaceId || undefined,
       linkedStoryIds: [storyIdStr],
       createdFromStoryId: storyIdStr,
       format: formatStr.trim().toLowerCase().slice(0, 64),
       headline: headline.trim().slice(0, 500),
-      state: state && ['scripting', 'multimedia', 'finalization', 'published', 'archived'].includes(normalizeState(state)) ? normalizeState(state) : 'scripting',
+      state: state && DEFAULT_PIECE_STATES.includes(normalizeState(state)) ? normalizeState(state) : 'scripting',
       createdBy: userId,
+      producer: producerId || null,
+      editors: editorIds,
+      teamMembers: teamMembersNorm,
+      ...(deadline ? { deadline: new Date(deadline) } : {}),
+      ...(Object.keys(deadlineByState).length ? { deadlines: deadlineByState } : {}),
     });
     const populated = await Piece.findById(piece._id)
       .populate('linkedStoryIds', 'headline researchNotes')
       .populate('createdBy', 'name email')
+      .populate('producer', 'name email')
+      .populate('editors', 'name email')
+      .populate('teamMembers.userId', 'name email')
       .lean();
     res.status(201).json(populated);
   } catch (err) {
@@ -183,11 +237,11 @@ export const update = async (req, res, next) => {
     if (!piece) {
       return res.status(404).json({ error: 'Piece not found' });
     }
-    const { headline, state, format, linkedStoryIds, rejectedAt, rejectionReason, parkedUntil, approved, approvedBy, approvedAt } = req.body;
+    const { headline, state, format, linkedStoryIds, rejectedAt, rejectionReason, parkedUntil, approved, approvedBy, approvedAt, deadline, deadlines, producer, editors, teamMembers } = req.body;
     if (headline !== undefined && typeof headline === 'string') {
       piece.headline = headline.trim().slice(0, 500);
     }
-    if (state !== undefined && ['scripting', 'multimedia', 'finalization', 'published', 'archived'].includes(normalizeState(state))) {
+    if (state !== undefined && DEFAULT_PIECE_STATES.includes(normalizeState(state))) {
       piece.state = normalizeState(state);
     }
     if (format !== undefined && typeof format === 'string' && format.trim().length > 0 && format.trim().length <= 64) {
@@ -202,10 +256,32 @@ export const update = async (req, res, next) => {
     if (approved !== undefined) piece.approved = Boolean(approved);
     if (approvedBy !== undefined) piece.approvedBy = approvedBy || null;
     if (approvedAt !== undefined) piece.approvedAt = approvedAt ? new Date(approvedAt) : null;
+    if (deadline !== undefined) piece.deadline = deadline ? new Date(deadline) : null;
+    if (deadlines !== undefined) {
+      const deadlineByState = normalizeDeadlinesByState(deadlines);
+      if (!piece.deadlines) piece.deadlines = {};
+      DEFAULT_BOARD_PIECE_STATES.forEach((s) => {
+        if (deadlineByState[s] !== undefined) piece.deadlines[s] = deadlineByState[s];
+      });
+    }
+    if (producer !== undefined) piece.producer = producer ? String(producer).trim() || null : null;
+    if (editors !== undefined && Array.isArray(editors)) {
+      piece.editors = editors.filter((id) => id && String(id).trim()).slice(0, 20);
+    }
+    if (teamMembers !== undefined && Array.isArray(teamMembers)) {
+      piece.teamMembers = teamMembers
+        .filter((m) => m && (m.userId || m.user_id))
+        .map((m) => ({ userId: m.userId ?? m.user_id, role: String(m.role || '').trim().slice(0, 100) }))
+        .filter((m) => m.role && m.userId)
+        .slice(0, 50);
+    }
     await piece.save();
     const populated = await Piece.findById(piece._id)
       .populate('linkedStoryIds', 'headline researchNotes')
       .populate('createdBy', 'name email')
+      .populate('producer', 'name email')
+      .populate('editors', 'name email')
+      .populate('teamMembers.userId', 'name email')
       .lean();
     res.json(populated);
   } catch (err) {

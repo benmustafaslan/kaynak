@@ -1,11 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useMatch, useNavigate, useParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { storiesApi } from '../utils/storiesApi';
 import { workspacesApi } from '../utils/workspacesApi';
+import { piecesApi } from '../utils/piecesApi';
 import { StoryDetailModal } from './StoryDetailModal';
 import { PieceDetailModal } from './PieceDetailModal';
+import { NewStoryModal } from './Kanban/NewStoryModal';
+import { NewPieceModal } from './Kanban/NewPieceModal';
+
+function IconDashboard() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="3" width="7" height="9" rx="1" />
+      <rect x="14" y="3" width="7" height="5" rx="1" />
+      <rect x="14" y="12" width="7" height="9" rx="1" />
+      <rect x="3" y="16" width="7" height="5" rx="1" />
+    </svg>
+  );
+}
 
 function IconBoard() {
   return (
@@ -103,6 +117,15 @@ function IconCopyLink() {
   );
 }
 
+function IconPlus() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
 interface AppLayoutProps {
   children: React.ReactNode;
 }
@@ -130,6 +153,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteRole, setInviteRole] = useState<'owner' | 'admin' | 'editor' | 'viewer'>('editor');
   const [copied, setCopied] = useState(false);
+  const [fabMenuOpen, setFabMenuOpen] = useState(false);
+  const [createModal, setCreateModal] = useState<'story' | 'piece' | 'idea' | null>(null);
+  const fabRef = useRef<HTMLDivElement>(null);
 
   const basePath = workspaceSlug ? `/w/${workspaceSlug}` : '';
   const fromPath = (location.state as { from?: string })?.from ?? `${basePath}/board`;
@@ -161,6 +187,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     };
   }, [location.pathname]);
 
+  const isDashboard = location.pathname === `${basePath}/dashboard` && !storyId && !pieceId;
   const isBoard = location.pathname === `${basePath}/board` && !storyId && !pieceId;
   const isStories = location.pathname === `${basePath}/stories` && !storyId && !pieceId;
   const isIdeas = location.pathname === `${basePath}/ideas` && !storyId && !pieceId;
@@ -171,7 +198,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     setWorkspaceSwitcherOpen(false);
   };
 
-  const canInvite = workspace?.role === 'owner' || workspace?.role === 'admin';
+  const canInvite = !!workspace?._id;
 
   const handleGenerateInvite = async () => {
     if (!workspace?._id) return;
@@ -201,7 +228,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   };
 
   useEffect(() => {
-    if (!inviteModalOpen || !workspace?._id || !canInvite) return;
+    if (!inviteModalOpen || !workspace?._id) return;
     setInviteFetching(true);
     setInviteError(null);
     workspacesApi
@@ -222,6 +249,20 @@ export function AppLayout({ children }: AppLayoutProps) {
     setInviteError(null);
     setInviteRole('editor');
     setCopied(false);
+  };
+
+  useEffect(() => {
+    if (!fabMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (fabRef.current && !fabRef.current.contains(e.target as Node)) setFabMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [fabMenuOpen]);
+
+  const openCreateModal = (type: 'story' | 'piece' | 'idea') => {
+    setFabMenuOpen(false);
+    setCreateModal(type);
   };
 
   return (
@@ -291,6 +332,14 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
         <nav className="app-sidebar-nav">
           <div className="flex min-h-0 flex-1 flex-col gap-1">
+            <Link
+              to={`${basePath}/dashboard`}
+              className={`app-sidebar-link ${isDashboard ? 'active' : ''}`}
+              onClick={closeMobileMenu}
+            >
+              <IconDashboard />
+              <span className="app-sidebar-link-text">Dashboard</span>
+            </Link>
             <Link
               to={`${basePath}/stories`}
               className={`app-sidebar-link ${isStories ? 'active' : ''}`}
@@ -475,6 +524,55 @@ export function AppLayout({ children }: AppLayoutProps) {
         </>
       )}
 
+      <div ref={fabRef} className="fixed bottom-6 right-6 z-[1100] flex flex-col items-end gap-2">
+        {fabMenuOpen && (
+          <div
+            className="flex flex-col rounded-lg border py-1 shadow-lg"
+            style={{ background: 'var(--app-bg)', borderColor: 'var(--border)' }}
+            role="menu"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="whitespace-nowrap px-4 py-2.5 text-left text-sm font-medium hover:bg-black/10"
+              style={{ color: 'var(--app-text-primary)' }}
+              onClick={() => openCreateModal('story')}
+            >
+              Create Story
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="whitespace-nowrap px-4 py-2.5 text-left text-sm font-medium hover:bg-black/10"
+              style={{ color: 'var(--app-text-primary)' }}
+              onClick={() => openCreateModal('piece')}
+            >
+              Create Piece
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="whitespace-nowrap px-4 py-2.5 text-left text-sm font-medium hover:bg-black/10"
+              style={{ color: 'var(--app-text-primary)' }}
+              onClick={() => openCreateModal('idea')}
+            >
+              Save an Idea
+            </button>
+          </div>
+        )}
+        <button
+          type="button"
+          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full shadow-lg transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--app-bg)]"
+          style={{ background: 'var(--accent-primary)', color: 'white', boxShadow: 'var(--shadow-lg)' }}
+          onClick={() => setFabMenuOpen((open) => !open)}
+          aria-label={fabMenuOpen ? 'Close create menu' : 'Create'}
+          aria-expanded={fabMenuOpen}
+          aria-haspopup="true"
+        >
+          <IconPlus />
+        </button>
+      </div>
+
       <button
         type="button"
         className="app-sidebar-menu-btn"
@@ -498,6 +596,53 @@ export function AppLayout({ children }: AppLayoutProps) {
         <PieceDetailModal
           pieceId={pieceId}
           onClose={closePieceModal}
+        />
+      )}
+
+      {createModal === 'story' && (
+        <NewStoryModal
+          onClose={() => setCreateModal(null)}
+          onSubmit={async (data) => {
+            await storiesApi.create({
+              headline: data.headline,
+              description: data.description,
+              categories: data.categories,
+              ...(data.state ? { state: data.state } : {}),
+              ...(data.parentStoryId ? { parentStoryId: data.parentStoryId } : {}),
+            });
+            setCreateModal(null);
+          }}
+        />
+      )}
+      {createModal === 'piece' && (
+        <NewPieceModal
+          onClose={() => setCreateModal(null)}
+          onSubmit={async (data) => {
+            await piecesApi.createStandalone({
+              format: data.format,
+              headline: data.headline,
+              state: data.state ?? 'scripting',
+            });
+            setCreateModal(null);
+          }}
+        />
+      )}
+      {createModal === 'idea' && (
+        <NewStoryModal
+          title="New Idea"
+          submitLabel="Add idea"
+          isIdea
+          onClose={() => setCreateModal(null)}
+          onSubmit={async (data) => {
+            await storiesApi.create({
+              headline: data.headline,
+              description: data.description,
+              categories: data.categories,
+              ...(data.state ? { state: data.state } : {}),
+              ...(data.parentStoryId ? { parentStoryId: data.parentStoryId } : {}),
+            });
+            setCreateModal(null);
+          }}
         />
       )}
     </div>

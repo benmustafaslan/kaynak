@@ -33,6 +33,9 @@ export const requireWorkspace = async (req, res, next) => {
     if (!membership) {
       return res.status(403).json({ error: 'Not a member of this workspace' });
     }
+    if (membership.status === 'pending') {
+      return res.status(403).json({ error: 'Your request to join this workspace is pending owner approval' });
+    }
 
     req.workspaceId = workspace._id;
     req.workspace = workspace;
@@ -65,7 +68,7 @@ export const optionalWorkspace = async (req, res, next) => {
       userId: req.user._id,
     }).lean();
 
-    if (!membership) {
+    if (!membership || membership.status === 'pending') {
       return next();
     }
 

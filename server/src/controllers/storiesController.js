@@ -1,7 +1,7 @@
 import Story from '../models/Story.js';
 import { logActivity } from './activityLog.js';
 
-const STATES = ['idea', 'research', 'scripting', 'multimedia', 'finalization', 'published', 'archived'];
+const STATES = ['idea', 'visible', 'archived'];
 
 /** Normalize state to lowercase for API/DB; supports legacy uppercase values. */
 function normalizeState(s) {
@@ -60,21 +60,7 @@ export const list = async (req, res, next) => {
     }
 
     if (myStories === 'true') {
-      const assignOr = [
-        { producer: userId },
-        { editors: userId },
-        { 'teamMembers.userId': userId },
-      ];
-      query.$and = query.$and || [];
-      query.$and.push({ $or: assignOr });
-    }
-    if (overdue === 'true') {
-      query.deadlines = {
-        $elemMatch: {
-          completed: { $ne: true },
-          date: { $lt: new Date() },
-        },
-      };
+      query.ownerId = userId;
     }
     if (category && category.trim()) {
       query.categories = category.trim();
@@ -106,8 +92,7 @@ export const list = async (req, res, next) => {
         .sort(sortOption)
         .skip(skip)
         .limit(limitNum)
-        .populate('producer', 'name email')
-        .populate('editors', 'name email')
+        .populate('ownerId', 'name email')
         .populate('createdBy', 'name email')
         .populate('approvedBy', 'name email')
         .populate('parentStoryId', 'headline')
@@ -137,11 +122,9 @@ export const getById = async (req, res, next) => {
       storyQuery.workspaceId = req.workspaceId;
     }
     const story = await Story.findOne(storyQuery)
-      .populate('producer', 'name email')
-      .populate('editors', 'name email')
+      .populate('ownerId', 'name email')
       .populate('createdBy', 'name email')
       .populate('approvedBy', 'name email')
-      .populate('teamMembers.userId', 'name email')
       .lean();
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
@@ -176,8 +159,7 @@ export const getRelated = async (req, res, next) => {
       childrenQuery.workspaceId = req.workspaceId;
     }
     const children = await Story.find(childrenQuery)
-        .populate('producer', 'name email')
-        .populate('editors', 'name email')
+        .populate('ownerId', 'name email')
         .sort({ createdAt: 1 })
         .lean();
 
@@ -214,8 +196,7 @@ export const getRelated = async (req, res, next) => {
       siblingsQuery.workspaceId = req.workspaceId;
     }
     const siblings = await Story.find(siblingsQuery)
-      .populate('producer', 'name email')
-      .populate('editors', 'name email')
+      .populate('ownerId', 'name email')
       .sort({ createdAt: 1 })
       .lean();
 
@@ -266,7 +247,7 @@ export const create = async (req, res, next) => {
     const normalizedRequested = requestedState ? normalizeState(String(requestedState)) : null;
     const initialState =
       isParent ? 'idea' : normalizedRequested && STATES.includes(normalizedRequested) ? normalizedRequested : 'idea';
-    const isWorkflowState = !isParent && initialState !== 'idea';
+    const isVisibleOrArchived = !isParent && (initialState === 'visible' || initialState === 'archived');
     const now = new Date();
 
     let parentStoryId = null;
@@ -291,16 +272,17 @@ export const create = async (req, res, next) => {
       description: descriptionValue,
       state: initialState,
       kind: isParent ? 'parent' : 'story',
-      approved: isWorkflowState,
-      approvedBy: isWorkflowState ? userId : null,
-      approvedAt: isWorkflowState ? now : null,
+      ownerId: userId,
+      approved: isVisibleOrArchived,
+      approvedBy: isVisibleOrArchived ? userId : null,
+      approvedAt: isVisibleOrArchived ? now : null,
       categories: Array.isArray(categories) ? categories.filter((c) => typeof c === 'string').slice(0, 20) : [],
       createdBy: userId,
       parentStoryId: parentStoryId || undefined,
-      stateHistory: isWorkflowState
+      stateHistory: isVisibleOrArchived
         ? [{ state: initialState, enteredAt: now, exitedAt: null, durationDays: null }]
         : undefined,
-      stateChangedAt: isWorkflowState ? now : null,
+      stateChangedAt: isVisibleOrArchived ? now : null,
     });
 
     if (parentStoryId) {
@@ -317,8 +299,7 @@ export const create = async (req, res, next) => {
     await logActivity(story._id, userId, 'created', { headline: story.headline });
 
     const populated = await Story.findById(story._id)
-      .populate('producer', 'name email')
-      .populate('editors', 'name email')
+      .populate('ownerId', 'name email')
       .populate('createdBy', 'name email')
       .lean();
     res.status(201).json(populated);
@@ -344,7 +325,6 @@ export const update = async (req, res, next) => {
       description,
       state,
       categories,
-      deadlines,
       checklist,
       researchNotes,
       isBlocked,
@@ -352,9 +332,7 @@ export const update = async (req, res, next) => {
       approved,
       approvedBy,
       approvedAt,
-      producer,
-      editors,
-      teamMembers,
+      ownerId,
       stateHistory,
       rejectedAt,
       rejectionReason,
@@ -402,7 +380,7 @@ export const update = async (req, res, next) => {
         });
         story.state = requestedState;
         story.stateChangedAt = now;
-        if (requestedState === 'published') {
+        if (requestedState === 'visible') {
           story.publishedAt = now;
           story.cycleTimeDays = Math.floor(
             (now - story.createdAt) / (1000 * 60 * 60 * 24)
@@ -418,14 +396,6 @@ export const update = async (req, res, next) => {
     }
     if (categories !== undefined && Array.isArray(categories)) {
       story.categories = categories.filter((c) => typeof c === 'string').slice(0, 20);
-    }
-    if (deadlines !== undefined && Array.isArray(deadlines)) {
-      story.deadlines = deadlines.map((d) => ({
-        name: String(d.name || '').slice(0, 200),
-        date: d.date ? new Date(d.date) : new Date(),
-        notifications: d.notifications || {},
-        completed: Boolean(d.completed),
-      }));
     }
     if (checklist !== undefined && Array.isArray(checklist)) {
       story.checklist = checklist.map((c, i) => ({
@@ -452,16 +422,6 @@ export const update = async (req, res, next) => {
       story.blockReason = typeof blockReason === 'string' ? blockReason.trim().slice(0, 500) : '';
     }
     if (approved !== undefined) {
-      const isChiefEditor = req.user.role === 'chief_editor';
-      const isProducerClaimingSelf =
-        req.user.role === 'producer' &&
-        producer !== undefined &&
-        producer !== null &&
-        String(producer) === String(req.user._id);
-      const canApprove = isChiefEditor || isProducerClaimingSelf;
-      if (Boolean(approved) && !canApprove) {
-        return res.status(403).json({ error: 'Only Chief Editors can approve ideas, or Producers can approve as their own story' });
-      }
       story.approved = Boolean(approved);
       if (story.approved) {
         story.approvedBy = userId;
@@ -472,25 +432,7 @@ export const update = async (req, res, next) => {
     }
     if (approvedBy !== undefined) story.approvedBy = approvedBy || null;
     if (approvedAt !== undefined) story.approvedAt = approvedAt ? new Date(approvedAt) : null;
-    if (producer !== undefined) story.producer = producer || null;
-    if (editors !== undefined && Array.isArray(editors)) {
-      story.editors = editors.filter((id) => id).slice(0, 20);
-    }
-    if (teamMembers !== undefined && Array.isArray(teamMembers)) {
-      story.teamMembers = teamMembers
-        .filter((m) => m && (m.userId || m.user_id))
-        .map((m) => ({
-          userId: m.userId ?? m.user_id,
-          role: String(m.role || '').trim().slice(0, 100),
-        }))
-        .filter((m) => m.role && m.userId)
-        .slice(0, 50);
-      // Sync producer/editors from teamMembers for backward compatibility (Kanban, IdeasInbox)
-      const producers = story.teamMembers.filter((m) => m.role === 'Producer').map((m) => m.userId);
-      const editorIds = story.teamMembers.filter((m) => m.role === 'Editor').map((m) => m.userId);
-      story.producer = producers[0] || null;
-      story.editors = editorIds.slice(0, 20);
-    }
+    if (ownerId !== undefined) story.ownerId = ownerId || null;
     if (stateHistory !== undefined && Array.isArray(stateHistory)) {
       story.stateHistory = stateHistory.map((e) => ({
         state: String(e.state || ''),
@@ -544,11 +486,9 @@ export const update = async (req, res, next) => {
     normalizeStoryState(story);
     await story.save();
     const populated = await Story.findById(story._id)
-      .populate('producer', 'name email')
-      .populate('editors', 'name email')
+      .populate('ownerId', 'name email')
       .populate('createdBy', 'name email')
       .populate('approvedBy', 'name email')
-      .populate('teamMembers.userId', 'name email')
       .lean();
     normalizeStoryState(populated);
     res.json(populated);

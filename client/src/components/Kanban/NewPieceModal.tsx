@@ -5,7 +5,7 @@ import { ModalShell } from '../ModalShell';
 
 interface NewPieceModalProps {
   onClose: () => void;
-  onSubmit: (data: { format: string; headline: string; state?: string }) => Promise<void>;
+  onSubmit: (data: { format: string; headline: string; state?: string; deadline?: string | null }) => Promise<void>;
 }
 
 const FORMAT_OPTIONS = () => {
@@ -24,6 +24,7 @@ export function NewPieceModal({ onClose, onSubmit }: NewPieceModalProps) {
   const [format, setFormat] = useState<string>(initialFormat);
   const [headline, setHeadline] = useState(() => applyTemplateHeadline(initialFormat));
   const [state, setState] = useState<string>('scripting');
+  const [deadline, setDeadline] = useState<string>('');
 
   const handleFormatChange = (newFormat: string) => {
     setFormat(newFormat);
@@ -41,7 +42,12 @@ export function NewPieceModal({ onClose, onSubmit }: NewPieceModalProps) {
     }
     setSubmitting(true);
     try {
-      await onSubmit({ format, headline: headline.trim(), state });
+      await onSubmit({
+        format,
+        headline: headline.trim(),
+        state,
+        deadline: deadline.trim() ? `${deadline.trim()}T23:59:59.000Z` : null,
+      });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create piece');
@@ -98,6 +104,15 @@ export function NewPieceModal({ onClose, onSubmit }: NewPieceModalProps) {
                   </option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="form-label">Deadline (optional)</label>
+              <input
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                className="form-input"
+              />
             </div>
             {error && (
               <p style={{ fontSize: 14, color: 'var(--black)', fontWeight: 500 }}>{error}</p>
