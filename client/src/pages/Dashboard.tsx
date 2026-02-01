@@ -2,14 +2,12 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { activityApi, type ActivityItemWithStory } from '../utils/activityApi';
-import { storiesApi } from '../utils/storiesApi';
 import { piecesApi } from '../utils/piecesApi';
-import type { Story } from '../types/story';
 import type { Piece } from '../types/piece';
-import { getStateDisplayLabel } from '../types/story';
+import { PIECE_STATE_LABELS } from '../types/piece';
 
 const ACTIVITY_LIMIT = 20;
-const MY_STORIES_LIMIT = 8;
+const MY_PIECES_LIMIT = 8;
 const DEADLINES_DAYS = 7;
 
 function formatRelativeTime(iso: string): string {
@@ -86,11 +84,8 @@ export default function Dashboard() {
 
   const [activity, setActivity] = useState<ActivityItemWithStory[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
-  const [myStories, setMyStories] = useState<Story[]>([]);
-  const [myStoriesTotal, setMyStoriesTotal] = useState(0);
-  const [myStoriesLoading, setMyStoriesLoading] = useState(true);
-  const [upcomingDeadlines, setUpcomingDeadlines] = useState<{ piece: Piece; date: string }[]>([]);
-  const [deadlinesLoading, setDeadlinesLoading] = useState(true);
+  const [myPieces, setMyPieces] = useState<Piece[]>([]);
+  const [myPiecesLoading, setMyPiecesLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,61 +108,39 @@ export default function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    setMyStoriesLoading(true);
-    storiesApi
-      .list({ myStories: true, limit: MY_STORIES_LIMIT, sort: 'updatedAtDesc' })
+    setMyPiecesLoading(true);
+    piecesApi
+      .listAll({ myStories: true })
       .then((res) => {
         if (!cancelled) {
-          setMyStories(res.stories ?? []);
-          setMyStoriesTotal(res.total ?? 0);
+          setMyPieces(res.pieces ?? []);
         }
       })
       .catch(() => {
-        if (!cancelled) {
-          setMyStories([]);
-          setMyStoriesTotal(0);
-        }
+        if (!cancelled) setMyPieces([]);
       })
       .finally(() => {
-        if (!cancelled) setMyStoriesLoading(false);
+        if (!cancelled) setMyPiecesLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    setDeadlinesLoading(true);
-    piecesApi
-      .listAll({ myStories: true })
-      .then((res) => {
-        if (!cancelled) {
-          const pieces = res.pieces ?? [];
-          const now = new Date();
-          const end = new Date(now);
-          end.setDate(end.getDate() + DEADLINES_DAYS);
-          const withDeadline = pieces
-            .filter((p): p is Piece & { deadline: string } => Boolean(p.deadline))
-            .map((p) => ({ piece: p, date: p.deadline }))
-            .filter(({ date }) => {
-              const d = new Date(date);
-              return d >= now && d <= end;
-            })
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-          setUpcomingDeadlines(withDeadline.slice(0, 8));
-        }
+  const upcomingDeadlines = (() => {
+    const now = new Date();
+    const end = new Date(now);
+    end.setDate(end.getDate() + DEADLINES_DAYS);
+    return myPieces
+      .filter((p): p is Piece & { deadline: string } => Boolean(p.deadline))
+      .map((p) => ({ piece: p, date: p.deadline }))
+      .filter(({ date }) => {
+        const d = new Date(date);
+        return d >= now && d <= end;
       })
-      .catch(() => {
-        if (!cancelled) setUpcomingDeadlines([]);
-      })
-      .finally(() => {
-        if (!cancelled) setDeadlinesLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(0, 8);
+  })();
 
   const linkState = { from: `${basePath}/dashboard` };
 
@@ -190,8 +163,8 @@ export default function Dashboard() {
         <DashboardCard title="Quick stats" className="md:col-span-1">
           <ul className="space-y-2 text-sm">
             <li style={{ color: 'var(--app-text-primary)' }}>
-              <span style={{ color: 'var(--app-text-secondary)' }}>Stories assigned to you:</span>{' '}
-              {myStoriesLoading ? '…' : myStoriesTotal}
+              <span style={{ color: 'var(--app-text-secondary)' }}>Pieces assigned to you:</span>{' '}
+              {myPiecesLoading ? '…' : myPieces.length}
             </li>
             <li style={{ color: 'var(--app-text-primary)' }}>
               <span style={{ color: 'var(--app-text-secondary)' }}>Fact-checks needing you:</span>{' '}
@@ -244,32 +217,32 @@ export default function Dashboard() {
           )}
         </DashboardCard>
 
-        {/* Stories I'm on */}
-        <DashboardCard title="Stories I'm on" className="md:col-span-1">
-          {myStoriesLoading ? (
+        {/* Pieces assigned to me */}
+        <DashboardCard title="Pieces assigned to me" className="md:col-span-1">
+          {myPiecesLoading ? (
             <p className="text-sm" style={{ color: 'var(--medium-gray)' }}>Loading…</p>
-          ) : myStories.length === 0 ? (
-            <p className="text-sm" style={{ color: 'var(--medium-gray)' }}>No stories assigned to you.</p>
+          ) : myPieces.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--medium-gray)' }}>No pieces assigned to you.</p>
           ) : (
             <>
               <ul className="space-y-2">
-                {myStories.map((s) => (
-                  <li key={s._id}>
+                {myPieces.slice(0, MY_PIECES_LIMIT).map((p) => (
+                  <li key={p._id}>
                     <Link
-                      to={`${basePath}/story/${s._id}`}
+                      to={`${basePath}/piece/${p._id}`}
                       state={linkState}
                       className="block rounded px-2 py-1.5 text-sm hover:bg-black/10"
                       style={{ color: 'var(--app-text-primary)' }}
                     >
-                      <span className="font-medium">{s.headline}</span>
+                      <span className="font-medium">{p.headline}</span>
                       <span className="ml-2 text-xs" style={{ color: 'var(--medium-gray)' }}>
-                        {getStateDisplayLabel(s.state)}
+                        {PIECE_STATE_LABELS[p.state] ?? p.state}
                       </span>
                     </Link>
                   </li>
                 ))}
               </ul>
-              {myStoriesTotal > MY_STORIES_LIMIT && (
+              {myPieces.length > MY_PIECES_LIMIT && (
                 <Link
                   to={`${basePath}/board`}
                   className="mt-3 inline-block text-sm font-medium"
@@ -291,7 +264,7 @@ export default function Dashboard() {
 
         {/* Upcoming deadlines */}
         <DashboardCard title="Upcoming deadlines" className="md:col-span-1">
-          {deadlinesLoading ? (
+          {myPiecesLoading ? (
             <p className="text-sm" style={{ color: 'var(--medium-gray)' }}>Loading…</p>
           ) : upcomingDeadlines.length === 0 ? (
             <p className="text-sm" style={{ color: 'var(--medium-gray)' }}>No deadlines in the next 7 days.</p>

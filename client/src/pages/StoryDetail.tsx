@@ -62,6 +62,10 @@ export interface StoryDetailProps {
 export interface StoryDetailHandle {
   /** Save story + script then call onClose. Use when closing the modal. */
   saveAndClose: () => Promise<void>;
+  /** Save story + script without closing. Use for the modal Save button. */
+  save: () => Promise<void>;
+  /** True while a save is in progress. */
+  saving: boolean;
 }
 
 const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function StoryDetail(
@@ -341,7 +345,7 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
     onClose?.();
   }, [handleSaveAll, onClose]);
 
-  useImperativeHandle(ref, () => ({ saveAndClose }), [saveAndClose]);
+  useImperativeHandle(ref, () => ({ saveAndClose, save: handleSaveAll, saving }), [saveAndClose, handleSaveAll, saving]);
 
   const handleAddFactCheck = useCallback(
     (selection: { start: number; end: number; text: string }) => {

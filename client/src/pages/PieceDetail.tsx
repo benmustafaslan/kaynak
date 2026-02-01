@@ -42,6 +42,8 @@ export interface PieceDetailProps {
 export interface PieceDetailHandle {
   /** Save script then call onClose. Use when closing the modal so script is saved. */
   saveAndClose: () => Promise<void>;
+  /** Save script without closing. Use for the modal Save button. */
+  save: () => Promise<void>;
 }
 
 const RESEARCH_PREVIEW_MAX_LENGTH = 400;
@@ -99,7 +101,11 @@ const PieceDetail = forwardRef<PieceDetailHandle, PieceDetailProps>(function Pie
     }
   }, [onClose]);
 
-  useImperativeHandle(ref, () => ({ saveAndClose }), [saveAndClose]);
+  const save = useCallback(async () => {
+    await scriptEditorRef.current?.saveDraft();
+  }, []);
+
+  useImperativeHandle(ref, () => ({ saveAndClose, save }), [saveAndClose, save]);
 
   function getUserId(ref: string | { _id: string } | undefined): string | null {
     if (!ref) return null;
