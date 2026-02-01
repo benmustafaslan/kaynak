@@ -94,6 +94,15 @@ function IconChevronDown() {
   );
 }
 
+function IconCopyLink() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
 interface AppLayoutProps {
   children: React.ReactNode;
 }
@@ -116,9 +125,11 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteFetching, setInviteFetching] = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteRole, setInviteRole] = useState<'owner' | 'admin' | 'editor' | 'viewer'>('editor');
+  const [copied, setCopied] = useState(false);
 
   const basePath = workspaceSlug ? `/w/${workspaceSlug}` : '';
   const fromPath = (location.state as { from?: string })?.from ?? `${basePath}/board`;
@@ -166,7 +177,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (!workspace?._id) return;
     setInviteLoading(true);
     setInviteError(null);
-    setInviteLink(null);
     try {
       const res = await workspacesApi.createInvite(workspace._id, inviteRole);
       setInviteLink(res.inviteLink);
@@ -177,17 +187,41 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
   };
 
+  const startNewInvite = () => {
+    setInviteLink(null);
+    setInviteError(null);
+  };
+
   const handleCopyInvite = () => {
     if (inviteLink) {
       navigator.clipboard.writeText(inviteLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
+
+  useEffect(() => {
+    if (!inviteModalOpen || !workspace?._id || !canInvite) return;
+    setInviteFetching(true);
+    setInviteError(null);
+    workspacesApi
+      .getInvite(workspace._id)
+      .then((data) => {
+        setInviteLink(data.inviteLink);
+        setInviteRole(data.role as 'owner' | 'admin' | 'editor' | 'viewer');
+      })
+      .catch(() => {
+        setInviteLink(null);
+      })
+      .finally(() => setInviteFetching(false));
+  }, [inviteModalOpen, workspace?._id, canInvite]);
 
   const closeInviteModal = () => {
     setInviteModalOpen(false);
     setInviteLink(null);
     setInviteError(null);
     setInviteRole('editor');
+    setCopied(false);
   };
 
   return (
@@ -354,58 +388,80 @@ export function AppLayout({ children }: AppLayoutProps) {
             {inviteError && (
               <p className="mb-3 text-sm" style={{ color: 'var(--accent-danger)' }}>{inviteError}</p>
             )}
-            {!inviteLink ? (
-              <>
-                {(workspace?.role === 'owner' || workspace?.role === 'admin') && (
-                  <div className="mb-4">
-                    <label htmlFor="invite-role" className="mb-2 block text-sm font-medium" style={{ color: 'var(--app-text-secondary)' }}>
-                      Role for new member
-                    </label>
-                    <select
-                      id="invite-role"
-                      value={inviteRole}
-                      onChange={(e) => setInviteRole(e.target.value as 'owner' | 'admin' | 'editor' | 'viewer')}
-                      className="w-full rounded border px-3 py-2 text-sm"
-                      style={{ borderColor: 'var(--border)', color: 'var(--app-text-primary)', background: 'var(--app-bg)' }}
-                    >
-                      {workspace?.role === 'owner' && <option value="owner">Owner</option>}
-                      <option value="admin">Admin</option>
-                      <option value="editor">Editor</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
-                  </div>
-                )}
-                <button
-                type="button"
-                disabled={inviteLoading}
-                className="rounded px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                style={{ background: 'var(--accent-primary)' }}
-                onClick={handleGenerateInvite}
-              >
-                {inviteLoading ? 'Generating…' : 'Generate invite link'}
-              </button>
-              </>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-xs" style={{ color: 'var(--medium-gray)' }}>Share this link. It expires in 7 days.</p>
-                <div className="flex gap-2">
+
+            <section className="mb-4" aria-labelledby="invite-link-heading">
+              <h3 id="invite-link-heading" className="mb-2 text-sm font-medium" style={{ color: 'var(--app-text-secondary)' }}>
+                Invite link
+              </h3>
+              {inviteFetching ? (
+                <p className="text-sm" style={{ color: 'var(--medium-gray)' }}>Loading…</p>
+              ) : inviteLink ? (
+                <div className="flex items-center gap-2">
                   <input
                     type="text"
                     readOnly
                     value={inviteLink}
-                    className="flex-1 rounded border px-3 py-2 text-sm"
-                    style={{ borderColor: 'var(--border)' }}
+                    className="min-w-0 flex-1 rounded border px-3 py-2 text-sm"
+                    style={{ borderColor: 'var(--border)', color: 'var(--app-text-primary)', background: 'var(--app-bg)' }}
+                    aria-label="Invite link"
                   />
                   <button
                     type="button"
-                    className="rounded border px-3 py-2 text-sm font-medium"
+                    className="flex shrink-0 items-center justify-center rounded border p-2 transition-opacity hover:opacity-80"
                     style={{ borderColor: 'var(--border)', color: 'var(--app-text-primary)' }}
                     onClick={handleCopyInvite}
+                    aria-label={copied ? 'Copied' : 'Copy link'}
+                    title={copied ? 'Copied!' : 'Copy link'}
                   >
-                    Copy
+                    <IconCopyLink />
+                    {copied && <span className="sr-only">Copied</span>}
                   </button>
                 </div>
-              </div>
+              ) : (
+                <p className="text-sm" style={{ color: 'var(--medium-gray)' }}>No invite link yet. Generate one below.</p>
+              )}
+            </section>
+
+            {!inviteLink && !inviteFetching && canInvite && (
+              <>
+                <div className="mb-4">
+                  <label htmlFor="invite-role" className="mb-2 block text-sm font-medium" style={{ color: 'var(--app-text-secondary)' }}>
+                    Role for new member
+                  </label>
+                  <select
+                    id="invite-role"
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value as 'owner' | 'admin' | 'editor' | 'viewer')}
+                    className="w-full rounded border px-3 py-2 text-sm"
+                    style={{ borderColor: 'var(--border)', color: 'var(--app-text-primary)', background: 'var(--app-bg)' }}
+                  >
+                    {workspace?.role === 'owner' && <option value="owner">Owner</option>}
+                    <option value="admin">Admin</option>
+                    <option value="editor">Editor</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  disabled={inviteLoading}
+                  className="rounded px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  style={{ background: 'var(--accent-primary)' }}
+                  onClick={handleGenerateInvite}
+                >
+                  {inviteLoading ? 'Generating…' : 'Generate invite link'}
+                </button>
+              </>
+            )}
+
+            {inviteLink && canInvite && (
+              <button
+                type="button"
+                className="text-sm font-medium"
+                style={{ color: 'var(--accent-primary)' }}
+                onClick={startNewInvite}
+              >
+                Generate new link
+              </button>
             )}
             <button
               type="button"

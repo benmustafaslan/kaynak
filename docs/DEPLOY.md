@@ -140,6 +140,9 @@ Your app is now running on the internet.
 - **“Application failed to respond” or blank page**  
   Check that **CLIENT_URL** is set to your exact Render URL (with `https://`, no slash at the end). Then in **Environment** add/update it and let Render redeploy.
 
+- **Invite link or "Add Member" link contains localhost**  
+  The server builds invite links using **CLIENT_URL**. In Render, open your backend service → **Environment** → set **CLIENT_URL** to the URL where users open the app in the browser (e.g. `https://kaynak-xxxx.onrender.com`), with `https://` and no trailing slash. Save; Render will redeploy and invite links will use the correct URL.
+
 - **“Could not connect to database”**  
   In MongoDB Atlas, **Network Access** must include `0.0.0.0/0`. In **MONGODB_URI**, make sure you replaced `<password>` with your real database user password (and that the password has no special characters that need encoding, or try a simpler password for the DB user).
 

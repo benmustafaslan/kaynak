@@ -29,6 +29,9 @@ export const workspacesApi = {
   updateMemberRole: (workspaceId: string, userId: string, role: string) =>
     api.patch<{ member: { userId: string; role: string } }>(`/workspaces/${workspaceId}/members/${encodeURIComponent(userId)}`, { role }).then((r) => r.member),
 
+  getInvite: (workspaceId: string) =>
+    api.get<{ inviteLink: string; token: string; expiresAt: string; role: string }>(`/workspaces/${workspaceId}/invite`).then((r) => r),
+
   createInvite: (workspaceId: string, role?: string) =>
     api.post<{ inviteLink: string; token: string; expiresAt: string }>(`/workspaces/${workspaceId}/invites`, { role }).then((r) => r),
 

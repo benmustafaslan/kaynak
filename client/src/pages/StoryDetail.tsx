@@ -570,13 +570,13 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
 
   if (loading && !story) {
     return (
-      <div className={`flex flex-col bg-app-bg-primary pl-[100px] ${isModal ? 'h-full min-h-0' : 'min-h-screen'}`}>
-        <header className="border-0 bg-app-bg-primary px-6 py-3">
-          <div className="mx-auto flex max-w-6xl items-center justify-between">
+      <div className={`flex flex-col bg-app-bg-primary pl-0 md:pl-[100px] ${isModal ? 'h-full min-h-0' : 'min-h-screen'}`}>
+        <header className="border-0 bg-app-bg-primary px-4 py-3 md:px-6">
+          <div className="flex w-full max-w-full items-center justify-between md:mx-auto md:max-w-6xl">
             {BackOrClose}
           </div>
         </header>
-        <main className="mx-auto flex w-full max-w-6xl flex-1 items-center justify-center p-6">
+        <main className="flex w-full max-w-full flex-1 items-center justify-center p-4 md:mx-auto md:max-w-6xl md:p-6">
           <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-app-border-light border-t-app-blue" />
           <span className="ml-2 text-app-text-secondary">Loading…</span>
         </main>
@@ -586,13 +586,13 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
 
   if (error && !story) {
     return (
-      <div className={`flex flex-col bg-app-bg-primary pl-[100px] ${isModal ? 'h-full min-h-0' : 'min-h-screen'}`}>
-        <header className="border-0 bg-app-bg-primary px-6 py-3">
-          <div className="mx-auto flex max-w-6xl items-center justify-between">
+      <div className={`flex flex-col bg-app-bg-primary pl-0 md:pl-[100px] ${isModal ? 'h-full min-h-0' : 'min-h-screen'}`}>
+        <header className="border-0 bg-app-bg-primary px-4 py-3 md:px-6">
+          <div className="flex w-full max-w-full items-center justify-between md:mx-auto md:max-w-6xl">
             {BackOrClose}
           </div>
         </header>
-        <main className="mx-auto flex w-full max-w-6xl flex-1 items-center justify-center p-6">
+        <main className="flex w-full max-w-full flex-1 items-center justify-center p-4 md:mx-auto md:max-w-6xl md:p-6">
           <p className="text-app-red">{error}</p>
         </main>
       </div>
@@ -601,13 +601,13 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
 
   if (!story) {
     return (
-      <div className={`flex flex-col bg-app-bg-primary pl-[100px] ${isModal ? 'h-full min-h-0' : 'min-h-screen'}`}>
-        <header className="border-0 bg-app-bg-primary px-6 py-3">
-          <div className="mx-auto flex max-w-6xl items-center justify-between">
+      <div className={`flex flex-col bg-app-bg-primary pl-0 md:pl-[100px] ${isModal ? 'h-full min-h-0' : 'min-h-screen'}`}>
+        <header className="border-0 bg-app-bg-primary px-4 py-3 md:px-6">
+          <div className="flex w-full max-w-full items-center justify-between md:mx-auto md:max-w-6xl">
             {BackOrClose}
           </div>
         </header>
-        <main className="mx-auto flex w-full max-w-6xl flex-1 items-center justify-center p-6">
+        <main className="flex w-full max-w-full flex-1 items-center justify-center p-4 md:mx-auto md:max-w-6xl md:p-6">
           <p className="text-app-text-secondary">Story not found.</p>
         </main>
       </div>
@@ -615,12 +615,12 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
   }
 
   return (
-    <div className={`flex flex-col overflow-auto pl-[100px] ${isModal ? 'h-full min-h-0 bg-black/20' : 'min-h-screen bg-app-bg-primary'}`}>
+    <div className={`flex flex-col overflow-auto pl-0 md:pl-[100px] ${isModal ? 'h-full min-h-0 bg-black/20' : 'min-h-screen bg-app-bg-primary'}`}>
       {/* Reference-style: single white card, minimal top bar – fill container with minimal gap; 50% less line spacing */}
-      <div className={`flex flex-1 flex-col leading-[0.8] ${isModal ? 'mx-auto w-full max-w-[900px] px-2 py-2' : 'mx-auto w-full max-w-[900px] p-4'}`}>
+      <div className={`flex flex-1 flex-col leading-[0.8] w-full max-w-full px-4 py-4 md:mx-auto md:max-w-[900px] ${isModal ? 'md:px-2 md:py-2' : ''}`}>
         {/* Top bar: back left; Share, Star, menu right – peer for card border on hover */}
         <div className="peer/topbar mb-2 flex items-center justify-between">
-          <div className={`flex items-center gap-1 ${isModal ? '-ml-[108px] -mt-2' : ''}`}>
+          <div className={`flex items-center gap-1 ${isModal ? '-mt-2 md:-ml-[108px] md:mt-0' : ''}`}>
             {BackOrClose}
           </div>
           <div className="flex items-center gap-1">

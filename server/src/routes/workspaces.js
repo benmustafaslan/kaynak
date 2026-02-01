@@ -6,6 +6,7 @@ import {
   create,
   listMembers,
   updateMemberRole,
+  getCurrentInvite,
   createInvite,
   remove,
 } from '../controllers/workspacesController.js';
@@ -20,6 +21,7 @@ router.get('/', listMine);
 router.get('/by-slug/:slug', getBySlug);
 router.get('/:id', getById);
 router.get('/:id/members', listMembers);
+router.get('/:id/invite', getCurrentInvite);
 router.patch('/:id/members/:userId', updateMemberRole);
 router.post('/:id/invites', createInvite);
 router.delete('/:id', remove);

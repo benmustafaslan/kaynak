@@ -22,7 +22,6 @@ export const accept = async (req, res, next) => {
       userId: req.user._id,
     });
     if (existing) {
-      await WorkspaceInvite.deleteOne({ _id: invite._id });
       const workspace = await Workspace.findById(invite.workspaceId).lean();
       return res.json({
         workspace: {
@@ -39,7 +38,6 @@ export const accept = async (req, res, next) => {
       userId: req.user._id,
       role: invite.role,
     });
-    await WorkspaceInvite.deleteOne({ _id: invite._id });
     const workspace = await Workspace.findById(invite.workspaceId).lean();
     res.json({
       workspace: {

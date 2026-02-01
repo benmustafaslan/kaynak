@@ -14,7 +14,7 @@ const workspaceInviteSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-workspaceInviteSchema.index({ token: 1 }, { unique: true });
+// token already has unique: true above, which creates the index
 workspaceInviteSchema.index({ workspaceId: 1 });
 workspaceInviteSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL optional: auto-delete expired
 

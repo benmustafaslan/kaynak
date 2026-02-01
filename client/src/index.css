@@ -90,6 +90,11 @@
     font-family: var(--font-primary);
   }
 
+  html {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
   body {
     font-family: var(--font-primary);
     color: var(--near-black);
@@ -98,6 +103,8 @@
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    width: 100%;
+    overflow-x: hidden;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1578,7 +1585,9 @@
   gap: 8px;
 }
 
+/* Prioritize headline (piece name / story title) over parent (linked story / series) when narrow */
 .story-card-row .story-card-row-headline {
+  flex-shrink: 0;
   min-width: 0;
   font-size: 13px;
   font-weight: 500;
@@ -1589,7 +1598,8 @@
 }
 
 .story-card-row .story-card-row-parent {
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
   font-size: 11px;
   font-weight: 600;
   color: var(--medium-gray);
@@ -2998,27 +3008,72 @@
   .app-main {
     margin-left: 0;
     padding-top: 72px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .page-header,
   .board-header,
+  .board-new-story-row,
+  .board-filters,
+  .board-toolbar,
   .kanban-container,
   .workflow-metrics,
   .ideas-inbox {
-    margin-left: 24px;
-    margin-right: 24px;
-    padding-left: 24px;
-    padding-right: 24px;
-  }
-
-  .page-content-narrow {
-    margin-left: 24px;
-    margin-right: 24px;
+    margin-left: 16px;
+    margin-right: 16px;
+    padding-left: 16px;
+    padding-right: 16px;
+    max-width: none;
   }
 
   .page-header {
     padding-top: 24px;
     padding-bottom: 24px;
+  }
+
+  .page-content-narrow {
+    margin-left: 16px;
+    margin-right: 16px;
+    max-width: none;
+  }
+
+  .stories-page {
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-bottom: 24px;
+  }
+
+  .stories-page-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stories-page-filters .stories-search-label {
+    min-width: 0;
+    max-width: none;
+  }
+
+  .stories-filter-series {
+    min-width: 0;
+  }
+
+  .story-packages-strip {
+    margin-left: 16px;
+    margin-right: 16px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .kanban-state-boxes {
+    margin-left: -16px;
+    margin-right: -16px;
+    padding-left: 16px;
+    padding-right: 16px;
   }
 
   .kanban-column {
@@ -3027,6 +3082,10 @@
   }
 
   .empty-state {
-    margin: 24px;
+    margin: 16px;
+  }
+
+  .ideas-grid {
+    grid-template-columns: 1fr;
   }
 }

@@ -8,7 +8,7 @@ const workspaceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-workspaceSchema.index({ slug: 1 });
+// slug already has unique: true above, which creates the index
 
 const Workspace = mongoose.model('Workspace', workspaceSchema);
 export default Workspace;

@@ -222,6 +222,38 @@ export const updateMemberRole = async (req, res, next) => {
   }
 };
 
+/** GET /workspaces/:id/invite – get current (latest non-expired) invite link (owner or admin only) */
+export const getCurrentInvite = async (req, res, next) => {
+  try {
+    const workspaceId = req.params.id;
+    const workspace = await Workspace.findById(workspaceId).lean();
+    if (!workspace) {
+      return res.status(404).json({ error: 'Workspace not found' });
+    }
+    const membership = await WorkspaceMember.findOne({
+      workspaceId,
+      userId: req.user._id,
+    }).lean();
+    if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
+      return res.status(403).json({ error: 'Only owners and admins can view the invite link' });
+    }
+    const now = new Date();
+    const invite = await WorkspaceInvite.findOne({
+      workspaceId,
+      expiresAt: { $gt: now },
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+    if (!invite) {
+      return res.status(404).json({ error: 'No invite link yet. Create one below.' });
+    }
+    const inviteLink = `${env.clientUrl}/w/join?token=${invite.token}`;
+    res.json({ inviteLink, token: invite.token, expiresAt: invite.expiresAt, role: invite.role });
+  } catch (err) {
+    next(err);
+  }
+};
+
 /** POST /workspaces/:id/invites – create invite link (owner or admin only) */
 export const createInvite = async (req, res, next) => {
   try {

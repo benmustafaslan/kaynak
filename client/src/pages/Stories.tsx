@@ -161,7 +161,7 @@ export default function Stories() {
               aria-label="Search stories"
             />
           </label>
-          <div className="stories-filter-series" style={{ minWidth: 200 }}>
+          <div className="stories-filter-series min-w-0 md:min-w-[200px]">
             <SeriesSearchBar
               series={series}
               value={seriesFilter}

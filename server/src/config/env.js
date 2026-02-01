@@ -2,6 +2,12 @@ const port = parseInt(process.env.PORT || '3000', 10);
 const nodeEnv = process.env.NODE_ENV || 'development';
 const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
 
+if (nodeEnv === 'production' && (clientUrl.includes('localhost') || clientUrl.includes('127.0.0.1'))) {
+  throw new Error(
+    'CLIENT_URL must be set to your deployed frontend URL in production (e.g. https://your-app.onrender.com). ' +
+    'Add CLIENT_URL in Render → your service → Environment, then redeploy.'
+  );
+}
 if (nodeEnv === 'production' && !process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET is required in production. Set it in your environment.');
 }
