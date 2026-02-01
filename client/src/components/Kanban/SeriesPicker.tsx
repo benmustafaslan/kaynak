@@ -80,7 +80,7 @@ export function SeriesPicker({
           gap: 8,
           textAlign: 'left',
           cursor: disabled ? 'not-allowed' : 'pointer',
-          backgroundColor: 'var(--white)',
+          backgroundColor: 'var(--bg-medium)',
         }}
         aria-expanded={open}
         aria-haspopup="listbox"
@@ -106,7 +106,7 @@ export function SeriesPicker({
             right: 0,
             top: '100%',
             marginTop: 4,
-            background: 'var(--white)',
+            background: 'var(--bg-medium)',
             border: '1px solid var(--border)',
             borderRadius: 'var(--radius)',
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',

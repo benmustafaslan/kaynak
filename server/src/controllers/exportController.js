@@ -32,7 +32,8 @@ export const exportHtml = async (req, res, next) => {
     let scriptContent = '';
     const current = await ScriptVersion.findOne({
       storyId: story._id,
-      version: story.currentScriptVersion || 0,
+      outputId: null,
+      version: 0,
     });
     if (current?.content) {
       scriptContent = stripHtml(current.content);
@@ -78,7 +79,8 @@ export const exportDocx = async (req, res, next) => {
     let scriptContent = '';
     const current = await ScriptVersion.findOne({
       storyId: story._id,
-      version: story.currentScriptVersion || 0,
+      outputId: null,
+      version: 0,
     });
     if (current?.content) {
       scriptContent = stripHtml(current.content);

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import type { Story, StoryState, UserRef } from '../../types/story';
+import type { Story, UserRef } from '../../types/story';
 
 function getDeadlineStatus(deadline?: string): 'overdue' | 'due-soon' | null {
   if (!deadline) return null;
@@ -28,7 +28,6 @@ function getDisplayName(ref: string | UserRef | undefined): string | undefined {
 
 interface StoryCardProps {
   story: Story;
-  workflowStates: readonly StoryState[];
   currentUserId?: string;
   isDragging?: boolean;
   onDragStart?: (e: React.DragEvent, story: Story) => void;
@@ -56,8 +55,6 @@ export function StoryCard({
       ? story.parentStoryId.headline
       : null;
 
-  const stateLower = story.state.toLowerCase();
-
   if (variant === 'row') {
     return (
       <div
@@ -67,7 +64,6 @@ export function StoryCard({
           e.dataTransfer.setData('text/plain', story._id);
           e.dataTransfer.effectAllowed = 'move';
         }}
-        data-state={stateLower}
         className={`story-card story-card-row ${isDragging ? 'dragging cursor-grabbing' : 'cursor-grab'}`}
       >
         <Link
@@ -115,16 +111,15 @@ export function StoryCard({
         e.dataTransfer.setData('text/plain', story._id);
         e.dataTransfer.effectAllowed = 'move';
       }}
-      data-state={stateLower}
       className={`story-card ${isDragging ? 'dragging cursor-grabbing' : 'cursor-grab'}`}
     >
       <Link to={`/story/${story._id}`} state={{ from: location.pathname }} className="block" onClick={(e) => e.stopPropagation()}>
         {parentHeadline && (
-          <div className="story-card-parent" title={`Part of series: ${parentHeadline}`}>
+          <div className="story-card-parent" title={`Series: ${parentHeadline}`}>
             {parentHeadline}
           </div>
         )}
-        {(story.unverifiedFactChecks ?? 0) > 0 && story.state === 'FINALIZATION' && (
+        {(story.unverifiedFactChecks ?? 0) > 0 && (
           <div className="story-warning">
             {story.unverifiedFactChecks} fact-check{story.unverifiedFactChecks !== 1 ? 's' : ''} pending
           </div>

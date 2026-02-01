@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
-import { STATE_DISPLAY_LABELS, getStateDisplayLabel, type StoryState } from '../../types/story';
 import type { Story } from '../../types/story';
 import { storiesApi } from '../../utils/storiesApi';
-import { SeriesPicker } from './SeriesPicker';
+import { ModalShell } from '../ModalShell';
+import { LongTextField } from '../LongTextField';
+import { SeriesSearchBar } from './SeriesSearchBar';
 
 interface NewStoryModalProps {
   onClose: () => void;
-  onSubmit: (data: { headline: string; description: string; categories: string[]; state?: StoryState; kind?: 'story' | 'parent'; parentStoryId?: string }) => Promise<void>;
-  initialStoryState?: StoryState;
+  onSubmit: (data: { headline: string; description: string; categories: string[]; kind?: 'story' | 'parent'; parentStoryId?: string }) => Promise<void>;
   /** Override modal title (e.g. "New Idea") */
   title?: string;
   /** Override submit button label (e.g. "Add idea") */
@@ -22,10 +22,10 @@ const MIN_DESCRIPTION = 3;
 
 type StartOption = 'agenda' | 'research';
 
-export function NewStoryModal({ onClose, onSubmit, initialStoryState, title: titleProp, submitLabel, isIdea, isPackage }: NewStoryModalProps) {
+export function NewStoryModal({ onClose, onSubmit, title: titleProp, submitLabel, isIdea, isPackage }: NewStoryModalProps) {
   const title = titleProp ?? (isPackage ? 'New story package' : 'New Story');
   const submitText = submitLabel ?? (isPackage ? 'Create package' : 'Create Story');
-  const showStartChoice = initialStoryState == null && !isPackage;
+  const showStartChoice = !isPackage;
   const [headline, setHeadline] = useState('');
   const [description, setDescription] = useState('');
   const [categoriesText, setCategoriesText] = useState('');
@@ -60,8 +60,6 @@ export function NewStoryModal({ onClose, onSubmit, initialStoryState, title: tit
     .map((c) => c.trim())
     .filter(Boolean);
 
-  const effectiveState: StoryState | undefined = initialStoryState ?? (startOption === 'research' ? 'research' : undefined);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -79,7 +77,6 @@ export function NewStoryModal({ onClose, onSubmit, initialStoryState, title: tit
         headline: headline.trim(),
         description: description.trim() || (isPackage ? 'Package' : ''),
         categories,
-        ...(effectiveState && effectiveState !== 'idea' ? { state: effectiveState } : {}),
         ...(isPackage ? { kind: 'parent' as const } : {}),
         ...(!isPackage && selectedSeriesId ? { parentStoryId: selectedSeriesId } : {}),
       });
@@ -92,24 +89,12 @@ export function NewStoryModal({ onClose, onSubmit, initialStoryState, title: tit
   };
 
   return (
-    <div
-      className="modal-overlay animate-fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="modal animate-slide-up"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
+    <ModalShell variant="form" onRequestClose={onClose}>
+      <div className="modal-header">
           <h2 className="modal-title">{title}</h2>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            {initialStoryState && !isPackage && (
-              <p style={{ fontSize: 14, color: 'var(--black)', fontWeight: 500 }}>
-                Creating in: <strong>{getStateDisplayLabel(initialStoryState)}</strong>
-              </p>
-            )}
             {isPackage && (
               <p style={{ fontSize: 14, color: 'var(--medium-gray)' }}>
                 A package groups related stories (e.g. Update, Educational, Commentary). It has no script; add child stories and link them here.
@@ -126,38 +111,35 @@ export function NewStoryModal({ onClose, onSubmit, initialStoryState, title: tit
                 maxLength={500}
               />
             </div>
-            <div>
-              <label className="form-label">Description{isPackage ? ' (optional)' : ''}</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="form-input form-textarea"
-                placeholder={isPackage ? 'Optional short description for the package' : 'Brief description of the story'}
-                rows={isPackage ? 2 : 4}
-                maxLength={50000}
-              />
-            </div>
+            <LongTextField
+              label="Description"
+              value={description}
+              onChange={setDescription}
+              placeholder={isPackage ? 'Optional short description for the package' : 'Brief description of the story'}
+              rows={isPackage ? 2 : 4}
+              maxLength={50000}
+              variant="form"
+              labelSuffix={isPackage ? '(optional)' : undefined}
+            />
             <p style={{ fontSize: 13, color: 'var(--medium-gray)' }}>
-              {initialStoryState
-                ? `This story will be created directly in ${getStateDisplayLabel(initialStoryState)}.`
-                : startOption === 'agenda'
-                  ? (isIdea ? 'New ideas go to Agenda Tracking for review.' : 'Story will go to Agenda Tracking for Chief Editor review.')
-                  : 'Story will be created in Research and appear on the board without approval.'}
+              {startOption === 'agenda'
+                ? (isIdea ? 'New ideas go to Agenda Tracking for review.' : 'Story will go to Agenda Tracking for Chief Editor review.')
+                : 'Story will be created and appear on the board without approval.'}
             </p>
             {!isPackage && seriesList.length > 0 && (
               <div>
                 <label className="form-label">Series (optional)</label>
-                <SeriesPicker
+                <SeriesSearchBar
                   series={seriesList}
                   value={selectedSeriesId}
                   onChange={setSelectedSeriesId}
-                  placeholder="None"
+                  placeholder="Search series…"
                   aria-label="Series"
                 />
               </div>
             )}
             <div>
-              <label className="form-label">Categories (comma-separated)</label>
+              <label className="form-label">Tags (comma-separated)</label>
               <input
                 type="text"
                 value={categoriesText}
@@ -198,7 +180,6 @@ export function NewStoryModal({ onClose, onSubmit, initialStoryState, title: tit
                     ...(submitting ? { opacity: 0.6, cursor: 'not-allowed' } : {}),
                     paddingLeft: 8,
                     paddingRight: 10,
-                    borderLeft: '1px solid rgba(255,255,255,0.3)',
                     borderTopLeftRadius: 0,
                     borderBottomLeftRadius: 0,
                   }}
@@ -216,7 +197,7 @@ export function NewStoryModal({ onClose, onSubmit, initialStoryState, title: tit
                       listStyle: 'none',
                       padding: 4,
                       minWidth: 220,
-                      background: 'var(--white)',
+                      background: 'var(--bg-medium)',
                       border: '1px solid var(--border)',
                       borderRadius: 'var(--radius)',
                       boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
@@ -280,7 +261,6 @@ export function NewStoryModal({ onClose, onSubmit, initialStoryState, title: tit
             )}
           </div>
         </form>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

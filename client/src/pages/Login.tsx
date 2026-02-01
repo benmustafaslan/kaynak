@@ -29,9 +29,9 @@ export default function Login() {
       <div
         className="w-full max-w-sm p-8"
         style={{
-          background: 'var(--white)',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: 'var(--shadow-md)',
+          background: 'transparent',
+          borderBottom: '1px solid var(--border)',
+          boxShadow: 'none',
         }}
       >
         <h1
@@ -46,8 +46,8 @@ export default function Login() {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           {error && (
             <p
-              className="px-3 py-2 text-sm rounded-lg"
-              style={{ border: '1px solid var(--accent-danger)', color: 'var(--accent-danger)', fontWeight: 500, background: 'rgba(239, 68, 68, 0.08)' }}
+              className="px-0 py-2 text-sm"
+              style={{ borderBottom: '2px solid var(--accent-danger)', color: 'var(--accent-danger)', fontWeight: 500, background: 'transparent' }}
               role="alert"
             >
               {error}

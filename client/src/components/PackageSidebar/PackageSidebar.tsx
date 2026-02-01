@@ -19,7 +19,7 @@ export function PackageSidebar() {
   const [packages, setPackages] = useState<Story[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [, setCreating] = useState(false);
 
   const fetchPackages = useCallback(async () => {
     setLoading(true);

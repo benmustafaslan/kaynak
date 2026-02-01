@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { storiesApi } from '../utils/storiesApi';
+import { piecesApi } from '../utils/piecesApi';
 import { activityApi } from '../utils/activityApi';
 import type { ActivityItemWithStory } from '../utils/activityApi';
-import { feedApi } from '../utils/feedApi';
-import type { FeedItem } from '../utils/feedApi';
 import type { Story } from '../types/story';
-import { IdeaCard, AssignmentModal, RejectModal, ParkModal } from '../components/IdeasInbox';
+import type { Piece } from '../types/piece';
+import { IdeaCard, PieceIdeaCard, NewPieceIdeaModal, AssignmentModal, RejectModal, ParkModal } from '../components/IdeasInbox';
 import type { AssignmentResult } from '../components/IdeasInbox/AssignmentModal';
 import { NewStoryModal } from '../components/Kanban/NewStoryModal';
+import { CreatePackageForm, PackageCard } from '../components/PackageSidebar';
 
 const IDEAS_PAGE_SIZE = 20;
-const DEFAULT_FEED_URL = 'https://feeds.bbci.co.uk/news/rss.xml';
 
 type SortOption = 'updatedAtDesc' | 'updatedAtAsc' | 'createdAtDesc' | 'createdAtAsc';
 
@@ -52,14 +53,8 @@ function activityDotClass(action: string): string {
   }
 }
 
-function descriptionFromFeedItem(item: FeedItem): string {
-  let desc = (item.contentSnippet || item.title || '').trim();
-  if (item.link) desc += '\n\nSource: ' + item.link;
-  while (desc.length < 140) desc += ' —';
-  return desc.slice(0, 50000);
-}
-
 export default function IdeasInbox() {
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const [ideas, setIdeas] = useState<Story[]>([]);
   const [total, setTotal] = useState(0);
@@ -72,22 +67,23 @@ export default function IdeasInbox() {
   const [assignmentFor, setAssignmentFor] = useState<Story | null>(null);
   const [rejectFor, setRejectFor] = useState<Story | null>(null);
   const [parkFor, setParkFor] = useState<Story | null>(null);
+  const [rejectForPiece, setRejectForPiece] = useState<Piece | null>(null);
+  const [parkForPiece, setParkForPiece] = useState<Piece | null>(null);
+  const [rejectForSeries, setRejectForSeries] = useState<Story | null>(null);
+  const [parkForSeries, setParkForSeries] = useState<Story | null>(null);
   const [showAddIdea, setShowAddIdea] = useState(false);
+  const [showAddPiece, setShowAddPiece] = useState(false);
   const [ideasView, setIdeasView] = useState<'ideas' | 'series'>('ideas');
 
   const [series, setSeries] = useState<Story[]>([]);
   const [seriesLoading, setSeriesLoading] = useState(false);
   const [showCreateSeries, setShowCreateSeries] = useState(false);
-  const [creatingSeries, setCreatingSeries] = useState(false);
+  const [, setCreatingSeries] = useState(false);
+
+  const [pieceIdeas, setPieceIdeas] = useState<Piece[]>([]);
 
   const [activity, setActivity] = useState<ActivityItemWithStory[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
-
-  const [feedUrl, setFeedUrl] = useState(DEFAULT_FEED_URL);
-  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
-  const [feedLoading, setFeedLoading] = useState(false);
-  const [feedError, setFeedError] = useState<string | null>(null);
-  const [savedFeedLinks, setSavedFeedLinks] = useState<Set<string>>(new Set());
 
   const fetchIdeas = useCallback(async () => {
     setLoading(true);
@@ -178,24 +174,26 @@ export default function IdeasInbox() {
     fetchActivity();
   }, [fetchActivity]);
 
-  const fetchFeed = useCallback(async () => {
-    if (!feedUrl.trim()) return;
-    setFeedLoading(true);
-    setFeedError(null);
+  const fetchPieceIdeas = useCallback(async () => {
     try {
-      const res = await feedApi.getFeed(feedUrl.trim());
-      setFeedItems(res.items);
-    } catch (err) {
-      setFeedError(err instanceof Error ? err.message : 'Failed to load feed');
-      setFeedItems([]);
-    } finally {
-      setFeedLoading(false);
+      const res = await piecesApi.listAll({ standalone: true });
+      setPieceIdeas(res.pieces);
+    } catch {
+      setPieceIdeas([]);
     }
-  }, [feedUrl]);
+  }, []);
 
   useEffect(() => {
-    fetchFeed();
-  }, [fetchFeed]);
+    if (ideasView === 'ideas' && location.pathname === '/ideas') fetchPieceIdeas();
+  }, [ideasView, location.pathname, fetchPieceIdeas]);
+
+  const handleOpenStory = useCallback((idea: Story) => {
+    navigate(`/story/${idea._id}`, { state: { from: '/ideas' } });
+  }, [navigate]);
+
+  const handleOpenPiece = useCallback((piece: Piece) => {
+    navigate(`/piece/${piece._id}`, { state: { from: '/ideas' } });
+  }, [navigate]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,10 +213,8 @@ export default function IdeasInbox() {
         approved: true,
         approvedBy: user._id,
         approvedAt: now,
-        state: 'research',
         producer: user._id,
         editors: [],
-        stateHistory: [{ state: 'research', enteredAt: now }],
       });
       await fetchIdeas();
       await fetchActivity();
@@ -235,10 +231,8 @@ export default function IdeasInbox() {
         approved: true,
         approvedBy: user._id,
         approvedAt: now,
-        state: 'research',
         producer: assignments.producer || undefined,
         editors: assignments.editors,
-        stateHistory: [{ state: 'research', enteredAt: now }],
       });
       setAssignmentFor(null);
       await fetchIdeas();
@@ -250,28 +244,107 @@ export default function IdeasInbox() {
 
   const handleReject = (idea: Story) => setRejectFor(idea);
   const handleRejectConfirm = async (reason: string) => {
-    if (!rejectFor) return;
-    try {
-      await storiesApi.update(rejectFor._id, {
-        rejectedAt: new Date().toISOString(),
-        rejectionReason: reason || undefined,
-      });
-      setRejectFor(null);
-      await fetchIdeas();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reject');
+    if (rejectFor) {
+      try {
+        await storiesApi.update(rejectFor._id, {
+          rejectedAt: new Date().toISOString(),
+          rejectionReason: reason || undefined,
+        });
+        setRejectFor(null);
+        await fetchIdeas();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to reject');
+      }
+      return;
+    }
+    if (rejectForPiece) {
+      try {
+        await piecesApi.update(rejectForPiece._id, {
+          rejectedAt: new Date().toISOString(),
+          rejectionReason: reason || undefined,
+        });
+        setRejectForPiece(null);
+        await fetchPieceIdeas();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to reject');
+      }
+      return;
+    }
+    if (rejectForSeries) {
+      try {
+        await storiesApi.update(rejectForSeries._id, {
+          rejectedAt: new Date().toISOString(),
+          rejectionReason: reason || undefined,
+        });
+        setRejectForSeries(null);
+        await fetchSeries();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to reject');
+      }
     }
   };
 
   const handlePark = (idea: Story) => setParkFor(idea);
   const handleParkConfirm = async (date: Date) => {
-    if (!parkFor) return;
+    if (parkFor) {
+      try {
+        await storiesApi.update(parkFor._id, { parkedUntil: date.toISOString() });
+        setParkFor(null);
+        await fetchIdeas();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to park');
+      }
+      return;
+    }
+    if (parkForPiece) {
+      try {
+        await piecesApi.update(parkForPiece._id, { parkedUntil: date.toISOString() });
+        setParkForPiece(null);
+        await fetchPieceIdeas();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to park');
+      }
+      return;
+    }
+    if (parkForSeries) {
+      try {
+        await storiesApi.update(parkForSeries._id, { parkedUntil: date.toISOString() });
+        setParkForSeries(null);
+        await fetchSeries();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to park');
+      }
+    }
+  };
+
+  const handleRejectPiece = (piece: Piece) => setRejectForPiece(piece);
+  const handleRejectPieceConfirm = async (reason: string) => {
+    if (!rejectForPiece) return;
     try {
-      await storiesApi.update(parkFor._id, { parkedUntil: date.toISOString() });
-      setParkFor(null);
-      await fetchIdeas();
+      await piecesApi.update(rejectForPiece._id, {
+        rejectedAt: new Date().toISOString(),
+        rejectionReason: reason || undefined,
+      });
+      setRejectForPiece(null);
+      await fetchPieceIdeas();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to park');
+      setError(err instanceof Error ? err.message : 'Failed to reject');
+    }
+  };
+
+  const handleParkPiece = (piece: Piece) => setParkForPiece(piece);
+
+  const handleApprovePiece = async (piece: Piece) => {
+    if (!user) return;
+    try {
+      await piecesApi.update(piece._id, {
+        approved: true,
+        approvedBy: user._id,
+        approvedAt: new Date().toISOString(),
+      });
+      await fetchPieceIdeas();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve');
     }
   };
 
@@ -289,19 +362,6 @@ export default function IdeasInbox() {
     });
     setShowAddIdea(false);
     await fetchIdeas();
-  };
-
-  const handleSaveFeedItemAsIdea = async (item: FeedItem) => {
-    try {
-      await storiesApi.create({
-        headline: item.title.slice(0, 500),
-        description: descriptionFromFeedItem(item),
-      });
-      setSavedFeedLinks((prev) => new Set(prev).add(item.link));
-      await fetchIdeas();
-    } catch (err) {
-      setFeedError(err instanceof Error ? err.message : 'Failed to save as idea');
-    }
   };
 
   const canApprove = canApproveIdeas(user?.role);
@@ -349,7 +409,10 @@ export default function IdeasInbox() {
             </button>
           </div>
           {ideasView === 'ideas' ? (
-            <button type="button" onClick={() => setShowAddIdea(true)} className="btn btn-primary">+ Add idea</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button type="button" onClick={() => setShowAddIdea(true)} className="btn btn-primary">+ Add idea</button>
+              <button type="button" onClick={() => setShowAddPiece(true)} className="btn btn-secondary">+ Add piece</button>
+            </div>
           ) : (
             <button type="button" onClick={() => setShowCreateSeries(true)} className="btn btn-primary">+ New Series</button>
           )}
@@ -410,8 +473,9 @@ export default function IdeasInbox() {
                 <div className="ideas-grid agenda-ideas-grid">
                   {ideas.map((idea) => (
                     <IdeaCard
-                      key={idea._id}
+                      key={`story-${idea._id}`}
                       idea={idea}
+                      onOpen={handleOpenStory}
                       onApprove={handleApprove}
                       onApproveAsMine={handleApproveAsMine}
                       onReject={handleReject}
@@ -420,6 +484,19 @@ export default function IdeasInbox() {
                       isProducer={user?.role === 'producer'}
                     />
                   ))}
+                  {pieceIdeas
+                    .filter((p) => !p.rejectedAt)
+                    .map((piece) => (
+                      <PieceIdeaCard
+                        key={`piece-${piece._id}`}
+                        piece={piece}
+                        onOpen={handleOpenPiece}
+                        onReject={handleRejectPiece}
+                        onPark={handleParkPiece}
+                        onApprove={handleApprovePiece}
+                        canApprove={canApprove}
+                      />
+                    ))}
                 </div>
                 <div className="pagination-bar">
                   <span className="pagination-info">Showing {start}–{end} of {total}</span>
@@ -463,8 +540,9 @@ export default function IdeasInbox() {
                     </button>
                   </div>
                 </div>
-                <div className="add-idea-bar">
+                <div className="add-idea-bar" style={{ gap: 8, flexWrap: 'wrap' }}>
                   <button type="button" onClick={() => setShowAddIdea(true)} className="btn btn-primary">+ Add idea</button>
+                  <button type="button" onClick={() => setShowAddPiece(true)} className="btn btn-secondary">+ Add piece</button>
                 </div>
               </>
             )}
@@ -473,7 +551,7 @@ export default function IdeasInbox() {
           <div className="agenda-card series-card">
             <div className="agenda-card-header">
               <span>Series</span>
-              <span className="badge">{series.length} series</span>
+              <span className="badge">{series.filter((s) => !s.rejectedAt).length} series</span>
             </div>
             {showCreateSeries ? (
               <div className="series-page-form-wrap" style={{ padding: 16 }}>
@@ -484,20 +562,24 @@ export default function IdeasInbox() {
               </div>
             ) : seriesLoading ? (
               <div className="ideas-list-loading">Loading…</div>
-            ) : series.length === 0 ? (
+            ) : series.filter((s) => !s.rejectedAt).length === 0 ? (
               <div className="empty-state" style={{ padding: 24 }}>
-                <p className="empty-state-description">Create a series to group related stories.</p>
+                <p className="empty-state-description">Create a series to group related stories. Rejected series appear in Archive.</p>
                 <button type="button" onClick={() => setShowCreateSeries(true)} className="btn btn-primary">+ New Series</button>
               </div>
             ) : (
               <div className="series-page-list" style={{ padding: '0 16px 16px' }}>
-                {series.map((pkg) => (
+                {series.filter((s) => !s.rejectedAt).map((pkg) => (
                   <PackageCard
                     key={pkg._id}
                     pkg={pkg}
                     onUpdated={handleSeriesUpdated}
                     onDeleted={handleSeriesDeleted}
                     onStoryAdded={handleStoryAdded}
+                    onReject={handleRejectSeries}
+                    onPark={handleParkSeries}
+                    onApprove={handleApproveSeries}
+                    canApprove={canApprove}
                   />
                 ))}
               </div>
@@ -523,55 +605,31 @@ export default function IdeasInbox() {
             )}
           </div>
         </div>
-
-        <div className="agenda-right">
-          <div className="agenda-card world-feed-card">
-            <div className="agenda-card-header">World feed</div>
-            <div className="feed-url-bar">
-              <input
-                type="url"
-                className="feed-url-input"
-                placeholder="RSS feed URL"
-                value={feedUrl}
-                onChange={(e) => setFeedUrl(e.target.value)}
-                onBlur={() => feedUrl.trim() && fetchFeed()}
-                aria-label="Feed URL"
-              />
-              <button type="button" className="btn btn-ghost" onClick={() => fetchFeed()} style={{ padding: '8px 12px' }}>Load</button>
-            </div>
-            {feedError && <p className="feed-error">{feedError}</p>}
-            {feedLoading ? (
-              <div className="feed-list-loading">Loading feed…</div>
-            ) : (
-              <ul className="feed-list">
-                {feedItems.map((item, idx) => (
-                  <li key={item.link || idx} className="feed-item">
-                    <p className="feed-item-title">
-                      <a href={item.link} target="_blank" rel="noopener noreferrer">{item.title || 'Untitled'}</a>
-                    </p>
-                    <p className="feed-item-meta">
-                      {item.pubDate ? new Date(item.pubDate).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : ''}
-                    </p>
-                    <div className="feed-item-actions">
-                      {savedFeedLinks.has(item.link) ? (
-                        <span className="btn btn-save saved">Saved</span>
-                      ) : (
-                        <button type="button" className="btn btn-save btn-primary" onClick={() => handleSaveFeedItemAsIdea(item)}>Save as idea</button>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
       </div>
 
       {assignmentFor && <AssignmentModal onClose={() => setAssignmentFor(null)} onConfirm={handleAssignmentConfirm} />}
-      {rejectFor && <RejectModal ideaHeadline={rejectFor.headline} onClose={() => setRejectFor(null)} onConfirm={handleRejectConfirm} />}
-      {parkFor && <ParkModal ideaHeadline={parkFor.headline} onClose={() => setParkFor(null)} onConfirm={handleParkConfirm} />}
+      {(rejectFor || rejectForPiece || rejectForSeries) && (
+        <RejectModal
+          ideaHeadline={rejectFor?.headline ?? rejectForPiece?.headline ?? rejectForSeries?.headline ?? ''}
+          onClose={() => { setRejectFor(null); setRejectForPiece(null); setRejectForSeries(null); }}
+          onConfirm={handleRejectConfirm}
+        />
+      )}
+      {(parkFor || parkForPiece || parkForSeries) && (
+        <ParkModal
+          ideaHeadline={parkFor?.headline ?? parkForPiece?.headline ?? parkForSeries?.headline ?? ''}
+          onClose={() => { setParkFor(null); setParkForPiece(null); setParkForSeries(null); }}
+          onConfirm={handleParkConfirm}
+        />
+      )}
       {showAddIdea && (
         <NewStoryModal onClose={() => setShowAddIdea(false)} onSubmit={handleAddIdea} title="New Idea" submitLabel="Add idea" isIdea />
+      )}
+      {showAddPiece && (
+        <NewPieceIdeaModal
+          onClose={() => setShowAddPiece(false)}
+          onCreated={() => { fetchPieceIdeas(); }}
+        />
       )}
       </div>
     </>

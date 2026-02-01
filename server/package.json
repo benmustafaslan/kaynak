@@ -5,9 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/index.js",
-    "start": "node src/index.js",
-    "seed:users": "node src/scripts/seedUsers.js",
-    "seed:stories": "node src/scripts/seedStories.js"
+    "start": "node src/index.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

@@ -1,30 +1,31 @@
 import type { FactCheck } from '../../utils/factChecksApi';
 
 const STATUS_STYLES: Record<FactCheck['status'], string> = {
-  pending: 'bg-[#fff9e6] border-app-yellow/40 text-[#b88400]',
-  verified: 'bg-[#e8f5f1] border-app-green/40 text-app-green',
-  disputed: 'bg-[#ffe8e8] border-app-red/40 text-app-red',
+  pending: 'bg-amber-900/30 border-amber-700/50 text-amber-300',
+  verified: 'bg-emerald-900/30 border-emerald-700/50 text-emerald-300',
+  disputed: 'bg-red-900/30 border-red-800/50 text-red-300',
 };
 
 interface FactCheckListProps {
   factChecks: FactCheck[];
   onSelect?: (fc: FactCheck) => void;
+  compact?: boolean;
 }
 
-export function FactCheckList({ factChecks, onSelect }: FactCheckListProps) {
+export function FactCheckList({ factChecks, onSelect, compact }: FactCheckListProps) {
   if (factChecks.length === 0) {
     return (
-      <p className="text-app-text-secondary text-sm">
+      <p className={compact ? 'text-app-text-tertiary text-xs' : 'text-app-text-secondary text-sm'}>
         No fact-checks yet. Select text in the script and click Add Fact-Check.
       </p>
     );
   }
   return (
-    <ul className="space-y-2">
+    <ul className={compact ? 'space-y-0.5' : 'space-y-2'}>
       {factChecks.map((fc) => (
         <li
           key={fc._id}
-          className={`flex cursor-pointer items-center gap-2 rounded border px-3 py-2 text-sm transition-opacity duration-[120ms] hover:opacity-90 ${STATUS_STYLES[fc.status]}`}
+          className={`flex cursor-pointer items-center gap-1.5 rounded border transition-opacity duration-[120ms] hover:opacity-90 ${compact ? 'px-1.5 py-0.5 text-xs' : 'px-3 py-2 text-sm'} ${STATUS_STYLES[fc.status]}`}
           onClick={() => onSelect?.(fc)}
           role="button"
           tabIndex={0}

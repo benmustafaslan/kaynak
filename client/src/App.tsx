@@ -4,7 +4,7 @@ import { useAuthStore } from './stores/authStore';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Board from './pages/Board';
-import OngoingSeries from './pages/OngoingSeries';
+import Stories from './pages/Stories';
 import IdeasInbox from './pages/IdeasInbox';
 import Archive from './pages/Archive';
 import Preferences from './pages/Preferences';
@@ -69,11 +69,13 @@ function App() {
         >
           <Route index element={<Navigate to="/board" replace />} />
           <Route path="board" element={<Board />} />
-          <Route path="series" element={<OngoingSeries />} />
+          <Route path="series" element={<Navigate to="/stories" replace />} />
+          <Route path="stories" element={<Stories />} />
           <Route path="ideas" element={<IdeasInbox />} />
           <Route path="archive" element={<Archive />} />
           <Route path="preferences" element={<Preferences />} />
           <Route path="story/:id" element={null} />
+          <Route path="piece/:id" element={null} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

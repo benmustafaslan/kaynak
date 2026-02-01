@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { LongTextField } from '../LongTextField';
 
 interface CreatePackageFormProps {
   onCancel: () => void;
@@ -48,17 +49,16 @@ export function CreatePackageForm({ onCancel, onSubmit }: CreatePackageFormProps
           aria-required="true"
         />
       </label>
-      <label className="package-sidebar-form-label">
-        Description <span className="package-sidebar-form-optional">(optional)</span>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Short description"
-          className="package-sidebar-form-textarea"
-          rows={2}
-          maxLength={500}
-        />
-      </label>
+      <LongTextField
+        label="Description"
+        value={description}
+        onChange={setDescription}
+        placeholder="Short description"
+        rows={2}
+        maxLength={500}
+        variant="form"
+        labelSuffix="(optional)"
+      />
       {error && <p className="package-sidebar-form-error" role="alert">{error}</p>}
       <div className="package-sidebar-form-actions">
         <button

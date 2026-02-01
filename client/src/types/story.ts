@@ -103,7 +103,8 @@ export interface Story {
   _id: string;
   headline: string;
   description: string;
-  state: StoryState;
+  /** @deprecated Stories no longer have states; only pieces do. Kept for API compatibility. */
+  state?: StoryState;
   workflowId?: string;
 
   producer?: string | UserRef;
@@ -154,7 +155,7 @@ export interface Story {
 }
 
 /** For Kanban card display (can be extended with comment count from API later). */
-export interface StoryCardData extends Pick<Story, '_id' | 'headline' | 'state' | 'producer' | 'editors' | 'categories'> {
+export interface StoryCardData extends Pick<Story, '_id' | 'headline' | 'producer' | 'editors' | 'categories'> {
   deadline?: string; // next or primary deadline ISO
   commentCount?: number;
 }

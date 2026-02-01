@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { usersApi } from '../../utils/usersApi';
 import type { User } from '../../types/user';
+import { ModalShell } from '../ModalShell';
 
 export interface AssignmentResult {
   producer: string | null;
@@ -44,15 +45,11 @@ export function AssignmentModal({ onClose, onConfirm }: AssignmentModalProps) {
   };
 
   return (
-    <div className="modal-overlay animate-fade-in" onClick={onClose}>
-      <div
-        className="modal animate-slide-up"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <h2 className="modal-title">Assign Producer & Editors</h2>
-        </div>
-        <form onSubmit={handleSubmit}>
+    <ModalShell variant="form" onRequestClose={onClose}>
+      <div className="modal-header">
+        <h2 className="modal-title">Assign Producer & Editors</h2>
+      </div>
+      <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             {loading ? (
               <p style={{ color: 'var(--medium-gray)', fontSize: 14 }}>Loading users…</p>
@@ -104,7 +101,6 @@ export function AssignmentModal({ onClose, onConfirm }: AssignmentModalProps) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

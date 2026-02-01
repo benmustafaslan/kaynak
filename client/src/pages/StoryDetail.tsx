@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { Link, useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
-import { STORY_STATES, STATE_DISPLAY_LABELS, getStateDisplayLabel, normalizeStateKey, type Story, type StoryState, type StoryChecklistItem, type StoryDeadline, type UserRef } from '../types/story';
+import type { Story, StoryChecklistItem, UserRef } from '../types/story';
 import { storiesApi } from '../utils/storiesApi';
 import { activityApi, type ActivityItem } from '../utils/activityApi';
 import { factChecksApi, type FactCheck } from '../utils/factChecksApi';
@@ -13,9 +13,34 @@ import type { User } from '../types/user';
 import { ScriptEditor, type ScriptEditorHandle } from '../components/ScriptEditor/ScriptEditor';
 import { AddFactCheckModal } from '../components/FactCheck/AddFactCheckModal';
 import { FactCheckList } from '../components/FactCheck/FactCheckList';
+import { piecesApi } from '../utils/piecesApi';
+import type { Piece } from '../types/piece';
+import { PIECE_STATE_LABELS } from '../types/piece';
+import { getAvailablePieceTypes, getPieceTypeDisplayLabel } from '../utils/pieceTypesPreferences';
+import { SeriesSearchBar } from '../components/Kanban/SeriesSearchBar';
+import { LongTextField } from '../components/LongTextField';
 
-const TABS = ['Script', 'Research', 'Media', 'Activity'] as const;
+const TABS = ['Research', 'Media', 'Activity'] as const;
 type Tab = (typeof TABS)[number];
+
+/** Reference-style property row icons (Notion-like: clock, calendar, person, checkbox). */
+const IconProject = () => (
+  <svg className="h-4 w-4 shrink-0 text-app-text-secondary" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="8" cy="8" r="6" />
+    <path d="M8 5v3l2 2" />
+  </svg>
+);
+const IconPerson = () => (
+  <svg className="h-4 w-4 shrink-0 text-app-text-secondary" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="8" cy="5" r="2.5" />
+    <path d="M3 14c0-2.5 2.5-4 5-4s5 1.5 5 4" />
+  </svg>
+);
+const IconPlus = () => (
+  <svg className="h-4 w-4 shrink-0 text-app-text-tertiary" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 3v10M3 8h10" />
+  </svg>
+);
 
 /** Role assignments in Story details – multiple people per role. Predefined + custom (user-editable). */
 const ROLE_OPTIONS = ['Producer', 'Editor', 'Videographer', 'Reporter', 'Researcher'] as const;
@@ -73,34 +98,50 @@ export interface StoryDetailProps {
   onClose?: () => void;
 }
 
-export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: StoryDetailProps = {}) {
+export interface StoryDetailHandle {
+  /** Save story + script then call onClose. Use when closing the modal. */
+  saveAndClose: () => Promise<void>;
+}
+
+const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function StoryDetail(
+  { isModal, storyId: storyIdProp, onClose },
+  ref
+) {
   const paramsId = useParams<{ id: string }>().id;
   const id = isModal && storyIdProp ? storyIdProp : paramsId;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pieceIdFromBoard = (location.state as { pieceId?: string })?.pieceId;
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
 
   const [story, setStory] = useState<Story | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>('Script');
+  const [activeTab, setActiveTab] = useState<Tab>('Research');
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [factChecks, setFactChecks] = useState<FactCheck[]>([]);
   const [factCheckModal, setFactCheckModal] = useState<{ selection: { start: number; end: number; text: string } } | null>(null);
   const [saving, setSaving] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [users, setUsers] = useState<Pick<User, '_id' | 'name' | 'email' | 'role'>[]>([]);
   const [comments, setComments] = useState<StoryComment[]>([]);
   const [newChecklistItem, setNewChecklistItem] = useState('');
-  const [newDeadline, setNewDeadline] = useState({ name: '', date: '' });
   const [newCommentText, setNewCommentText] = useState('');
   const [categoryInput, setCategoryInput] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [related, setRelated] = useState<{ parentStory: Story | null; relatedStories: Story[] } | null>(null);
   const [parentStories, setParentStories] = useState<Story[]>([]);
   const [newRoleAssignment, setNewRoleAssignment] = useState<RoleAssignment | null>(null);
-  const [lastSavedStory, setLastSavedStory] = useState<Story | null>(null);
+  const [, setLastSavedStory] = useState<Story | null>(null);
+  const [showMoreProperties, setShowMoreProperties] = useState(false);
+  const [pieces, setPieces] = useState<Piece[]>([]);
+  const [editingPieceId, setEditingPieceId] = useState<string | null>(null);
+  const [showAddPiece, setShowAddPiece] = useState(false);
+  const [addPieceHeadline, setAddPieceHeadline] = useState('');
+  const [addPieceFormat, setAddPieceFormat] = useState<string>(() => getAvailablePieceTypes()[0] ?? 'other');
+  const [creatingPiece, setCreatingPiece] = useState(false);
   const dirtyRef = useRef(false);
   const [, setDirtyTick] = useState(0);
   const scriptEditorRef = useRef<ScriptEditorHandle | null>(null);
@@ -133,14 +174,24 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
   }, [fetchStory]);
 
   useEffect(() => {
+    if (id && pieceIdFromBoard) {
+      setEditingPieceId(pieceIdFromBoard);
+    }
+  }, [id, pieceIdFromBoard]);
+
+  useEffect(() => {
     if (!id) return;
     activityApi.getByStoryId(id).then((res) => setActivity(res.activity)).catch(() => setActivity([]));
   }, [id]);
 
   useEffect(() => {
     if (!id) return;
-    factChecksApi.list(id).then((res) => setFactChecks(res.factChecks)).catch(() => setFactChecks([]));
-  }, [id]);
+    if (editingPieceId) {
+      factChecksApi.list(id, undefined, editingPieceId).then((res) => setFactChecks(res.factChecks)).catch(() => setFactChecks([]));
+    } else {
+      factChecksApi.list(id).then((res) => setFactChecks(res.factChecks)).catch(() => setFactChecks([]));
+    }
+  }, [id, editingPieceId]);
 
   useEffect(() => {
     usersApi.list().then((res) => setUsers(res.users)).catch(() => setUsers([]));
@@ -164,6 +215,21 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
     storiesApi.list({ kind: 'parent', limit: 100 }).then((res) => setParentStories(res.stories)).catch(() => setParentStories([]));
   }, [story?.kind]);
 
+  const fetchPieces = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await piecesApi.list(id);
+      setPieces(res.pieces);
+    } catch {
+      setPieces([]);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (!id || story?.kind === 'parent') return;
+    fetchPieces();
+  }, [id, story?.kind, fetchPieces]);
+
   const handleUpdateStory = useCallback(
     async (
       updates: Partial<
@@ -173,7 +239,6 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
           | 'description'
           | 'state'
           | 'categories'
-          | 'deadlines'
           | 'checklist'
           | 'researchNotes'
           | 'producer'
@@ -202,9 +267,7 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
   const getSavePayload = useCallback((s: Story) => ({
     headline: s.headline,
     description: s.description,
-    state: s.state,
     categories: s.categories,
-    deadlines: s.deadlines,
     checklist: s.checklist,
     researchNotes: s.researchNotes,
     parentStoryId: s.parentStoryId,
@@ -222,6 +285,13 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
     dirtyRef.current = false;
     setDirtyTick((t) => t + 1);
   }, [story, hasUnsavedChanges, saving, handleUpdateStory, getSavePayload]);
+
+  const saveAndClose = useCallback(async () => {
+    await handleSaveAll();
+    onClose?.();
+  }, [handleSaveAll, onClose]);
+
+  useImperativeHandle(ref, () => ({ saveAndClose }), [saveAndClose]);
 
   const handleAddFactCheck = useCallback(
     (selection: { start: number; end: number; text: string }) => {
@@ -288,38 +358,28 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
   const handleSubmitFactCheck = useCallback(
     async (data: { type: FactCheck['type']; note: string }) => {
       if (!id || !story || !factCheckModal) return;
-      await factChecksApi.create(id, {
-        scriptVersion: story.currentScriptVersion ?? 0,
-        textSelection: factCheckModal.selection,
-        type: data.type,
-        note: data.note,
-      });
-      const res = await factChecksApi.list(id);
-      setFactChecks(res.factChecks);
+      const scriptVersion = 0;
+      if (editingPieceId) {
+        await factChecksApi.create(id, { scriptVersion, textSelection: factCheckModal.selection, type: data.type, note: data.note }, editingPieceId);
+        const res = await factChecksApi.list(id, undefined, editingPieceId);
+        setFactChecks(res.factChecks);
+      } else {
+        await factChecksApi.create(id, { scriptVersion, textSelection: factCheckModal.selection, type: data.type, note: data.note });
+        const res = await factChecksApi.list(id);
+        setFactChecks(res.factChecks);
+      }
       setFactCheckModal(null);
     },
-    [id, story, factCheckModal]
+    [id, story, factCheckModal, editingPieceId, pieces]
   );
 
   const suggestedNextSteps = useMemo(() => {
     if (!story) return null;
-    const state = (normalizeStateKey(story.state) || (story.state as string)?.toLowerCase?.() || '') as StoryState;
     const pendingFactChecks = factChecks.filter((f) => f.status === 'pending').length;
     const checklistTotal = story.checklist?.length ?? 0;
     const checklistDone = story.checklist?.filter((c) => c.completed).length ?? 0;
-    if (state === 'idea') return 'Add a description and move to Research when ready.';
-    if (state === 'research') return 'Add research notes in the Research tab, then move to Scripting.';
-    if (state === 'scripting') {
-      if (pendingFactChecks > 0) return `${pendingFactChecks} fact-check(s) pending — resolve in Script tab or sidebar.`;
-      return 'Draft in Script tab. Add fact-checks for claims that need verification.';
-    }
-    if (state === 'multimedia') return 'Add media and attachments in the Media tab (upload coming soon).';
-    if (state === 'finalization') {
-      if (pendingFactChecks > 0) return `${pendingFactChecks} fact-check(s) pending — resolve before publishing.`;
-      if (checklistTotal > 0 && checklistDone < checklistTotal) return 'Complete checklist and resolve fact-checks before publishing.';
-      return 'Review script and checklist, then use Publish when ready.';
-    }
-    if (state === 'published') return 'Story is published.';
+    if (pendingFactChecks > 0) return `${pendingFactChecks} fact-check(s) pending — resolve in Pieces or sidebar.`;
+    if (checklistTotal > 0 && checklistDone < checklistTotal) return 'Complete checklist and resolve fact-checks.';
     return null;
   }, [story, factChecks]);
 
@@ -340,34 +400,6 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
     handleUpdateStory({ checklist: next });
     setNewChecklistItem('');
   }, [story, newChecklistItem, handleUpdateStory]);
-
-  const handleAddDeadline = useCallback(() => {
-    const name = newDeadline.name.trim();
-    if (!name || !story) return;
-    const date = newDeadline.date || new Date().toISOString().slice(0, 10);
-    const current = story.deadlines ?? [];
-    const next: StoryDeadline[] = [...current, { name, date, completed: false }];
-    handleUpdateStory({ deadlines: next });
-    setNewDeadline({ name: '', date: '' });
-  }, [story, newDeadline, handleUpdateStory]);
-
-  const handleDeadlineToggleComplete = useCallback(
-    (index: number) => {
-      if (!story?.deadlines) return;
-      const next = story.deadlines.map((d, i) => (i === index ? { ...d, completed: !d.completed } : d));
-      handleUpdateStory({ deadlines: next });
-    },
-    [story, handleUpdateStory]
-  );
-
-  const handleRemoveDeadline = useCallback(
-    (index: number) => {
-      if (!story?.deadlines) return;
-      const next = story.deadlines.filter((_, i) => i !== index);
-      handleUpdateStory({ deadlines: next });
-    },
-    [story, handleUpdateStory]
-  );
 
   const handleAddCategory = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -410,19 +442,11 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
     }
   }, [id, newCommentText]);
 
-  const handleConfirmPublish = useCallback(() => {
-    handleUpdateStory({ state: 'published' });
-    setPublishModalOpen(false);
-  }, [handleUpdateStory]);
-
-  const pendingFactCount = factChecks.filter((f) => f.status === 'pending').length;
-  const checklistIncomplete = (story?.checklist?.length ?? 0) > 0 && (story?.checklist?.filter((c) => c.completed).length ?? 0) < (story?.checklist?.length ?? 0);
-
   const BackOrClose = isModal && onClose ? (
     <button
       type="button"
-      onClick={onClose}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-app-text-secondary transition-colors duration-[120ms] hover:bg-app-bg-hover hover:text-app-text-primary"
+      onClick={saveAndClose}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-app-text-secondary transition-colors duration-[120ms] hover:bg-app-bg-hover hover:text-app-text-primary"
       aria-label="Close"
     >
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -435,8 +459,8 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
 
   if (loading && !story) {
     return (
-      <div className={`flex flex-col bg-app-bg-primary ${isModal ? 'h-full min-h-0' : 'min-h-screen'}`}>
-        <header className="border-b border-app-border-light bg-app-bg-primary px-6 py-3">
+      <div className={`flex flex-col bg-app-bg-primary pl-[100px] ${isModal ? 'h-full min-h-0' : 'min-h-screen'}`}>
+        <header className="border-0 bg-app-bg-primary px-6 py-3">
           <div className="mx-auto flex max-w-6xl items-center justify-between">
             {BackOrClose}
           </div>
@@ -451,8 +475,8 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
 
   if (error && !story) {
     return (
-      <div className={`flex flex-col bg-app-bg-primary ${isModal ? 'h-full min-h-0' : 'min-h-screen'}`}>
-        <header className="border-b border-app-border-light bg-app-bg-primary px-6 py-3">
+      <div className={`flex flex-col bg-app-bg-primary pl-[100px] ${isModal ? 'h-full min-h-0' : 'min-h-screen'}`}>
+        <header className="border-0 bg-app-bg-primary px-6 py-3">
           <div className="mx-auto flex max-w-6xl items-center justify-between">
             {BackOrClose}
           </div>
@@ -466,8 +490,8 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
 
   if (!story) {
     return (
-      <div className={`flex flex-col bg-app-bg-primary ${isModal ? 'h-full min-h-0' : 'min-h-screen'}`}>
-        <header className="border-b border-app-border-light bg-app-bg-primary px-6 py-3">
+      <div className={`flex flex-col bg-app-bg-primary pl-[100px] ${isModal ? 'h-full min-h-0' : 'min-h-screen'}`}>
+        <header className="border-0 bg-app-bg-primary px-6 py-3">
           <div className="mx-auto flex max-w-6xl items-center justify-between">
             {BackOrClose}
           </div>
@@ -480,48 +504,240 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
   }
 
   return (
-    <div className={`flex flex-col bg-app-bg-primary overflow-auto ${isModal ? 'h-full min-h-0' : 'min-h-screen'}`}>
-      {/* Header */}
-      <header className={`sticky top-0 z-10 shrink-0 border-b border-app-border-light bg-app-bg-primary shadow-[var(--shadow-sm)] ${isModal ? 'px-3 py-2' : 'px-6 py-3'}`}>
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
-          <div className="flex min-w-0 flex-1 items-center gap-4">
+    <div className={`flex flex-col overflow-auto pl-[100px] ${isModal ? 'h-full min-h-0 bg-black/20' : 'min-h-screen bg-app-bg-primary'}`}>
+      {/* Reference-style: single white card, minimal top bar – fill container with minimal gap; 50% less line spacing */}
+      <div className={`flex flex-1 flex-col leading-[0.8] ${isModal ? 'mx-auto w-full max-w-[900px] px-2 py-2' : 'mx-auto w-full max-w-[900px] p-4'}`}>
+        {/* Top bar: back left; Share, Star, menu right – peer for card border on hover */}
+        <div className="peer/topbar mb-2 flex items-center justify-between">
+          <div className={`flex items-center gap-1 ${isModal ? '-ml-[108px] -mt-2' : ''}`}>
             {BackOrClose}
-            <div className="min-w-0 flex-1">
-              <input
-                type="text"
-                value={story.headline}
-                onChange={(e) => {
-                  setStory((s) => (s ? { ...s, headline: e.target.value } : s));
-                  markDirty();
-                }}
-                onBlur={(e) => e.target.value !== story.headline && handleUpdateStory({ headline: e.target.value })}
-                className="w-full truncate border-0 border-b border-transparent bg-transparent py-2 text-app-text-primary text-2xl font-semibold leading-tight outline-none transition-[background,padding] duration-[120ms] focus:bg-app-bg-hover focus:px-3 focus:rounded focus:-mx-3"
-              />
-              <div className="mt-3 flex flex-wrap items-center gap-3 text-app-text-secondary text-sm">
-                <select
-                  value={normalizeStateKey(story.state) || story.state}
-                  onChange={(e) => handleUpdateStory({ state: (e.target.value || '').toLowerCase() as StoryState })}
-                  className="rounded border border-app-border-light bg-app-bg-primary px-2 py-1.5 text-app-text-primary text-sm transition-all duration-[120ms] hover:border-app-border-medium focus:border-app-blue focus:outline-none"
-                  aria-label="State"
-                >
-                  {STORY_STATES.map((s) => (
-                    <option key={s} value={s}>{STATE_DISPLAY_LABELS[s]}</option>
-                  ))}
-                </select>
+          </div>
+          <div className="flex items-center gap-1">
+            <button type="button" className="flex h-8 w-8 items-center justify-center rounded-sm text-app-text-secondary hover:bg-transparent hover:text-app-text-primary" aria-label="Share">
+              <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8.5v3a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 4 11.5v-3M8 10.5V1M5.5 4L8 1.5 10.5 4" /></svg>
+            </button>
+            <button type="button" className="flex h-8 w-8 items-center justify-center rounded-sm text-app-text-secondary hover:bg-transparent hover:text-app-text-primary" aria-label="Favorite">
+              <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 2l1.8 3.6L14 6.5l-2.8 2.7.7 4L8 11.2 4.1 12.5l.7-4L2 6.5l4.2-.9L8 2z" /></svg>
+            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setExportOpen((o) => !o)}
+                className="flex h-8 w-8 items-center justify-center rounded-sm text-app-text-secondary hover:bg-transparent hover:text-app-text-primary"
+                aria-label="More"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="8" cy="13" r="1.5" /></svg>
+              </button>
+              {exportOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} aria-hidden />
+                  <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-sm border-0 bg-transparent py-1 shadow-lg">
+                    {isModal && (
+                      <button type="button" onClick={handleSaveAll} disabled={saving || !hasUnsavedChanges} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-app-text-primary hover:bg-transparent disabled:opacity-50">
+                        {saving ? 'Saving…' : 'Save'}
+                      </button>
+                    )}
+                    <button type="button" onClick={handlePrintPdf} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-app-text-primary hover:bg-transparent">Print / PDF</button>
+                    <button type="button" onClick={handleDownloadDocx} disabled={exporting} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-app-text-primary hover:bg-transparent disabled:opacity-50">Download DOCX</button>
+                    <button type="button" onClick={handleDownloadHtml} disabled={exporting} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-app-text-primary hover:bg-transparent disabled:opacity-50">Download HTML</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Card – border and background only when top bar (menu/buttons) hovered; fills width */}
+        <div className="w-full rounded-sm border-0 bg-transparent shadow-sm transition-[border-color,background-color] peer-hover/topbar:border-transparent peer-hover/topbar:bg-transparent">
+          {/* Title – large, bold, editable */}
+          <div className="border-0 px-3 pt-4 pb-1">
+            <input
+              type="text"
+              value={story.headline}
+              onChange={(e) => { setStory((s) => (s ? { ...s, headline: e.target.value } : s)); markDirty(); }}
+              onBlur={(e) => e.target.value !== story.headline && handleUpdateStory({ headline: e.target.value })}
+              className="w-full border-0 bg-transparent text-[28px] font-bold leading-tight text-app-text-primary outline-none placeholder:text-app-text-tertiary"
+              placeholder="Untitled"
+            />
+          </div>
+
+          {/* Property rows – icon | label | value (reference style) */}
+          <div className="border-0 px-3 py-2">
+            {/* Series (parent story) */}
+            {story.kind !== 'parent' && (
+              <div className="flex items-center gap-3 py-2">
+                <IconProject />
+                <span className="w-28 shrink-0 text-sm text-app-text-secondary">Part of series</span>
+                <div className="min-w-0 flex-1 max-w-md">
+                  <SeriesSearchBar
+                    series={parentStories}
+                    value={typeof story.parentStoryId === 'string' ? story.parentStoryId : (story.parentStoryId as { _id?: string })?._id ?? ''}
+                    onChange={(seriesId) => handleUpdateStory({ parentStoryId: seriesId })}
+                    placeholder="Search series…"
+                    aria-label="Part of series"
+                    onSearch={(q) => storiesApi.list({ kind: 'parent', search: q, limit: 50 }).then((r) => r.stories)}
+                  />
+                </div>
+              </div>
+            )}
+            {/* Roles – first on same line as title; rest and Add on new lines */}
+            <div className="space-y-3 py-2">
+              {(() => {
+                const assignList = buildAssignmentsFromStory(story);
+                const rows = newRoleAssignment ? [...assignList, newRoleAssignment] : assignList;
+                const updateRoles = (next: RoleAssignment[]) => {
+                  handleUpdateStory({ teamMembers: next.filter((a) => a.role && a.userId) });
+                  setNewRoleAssignment(null);
+                };
+                const predefined = new Set(ROLE_OPTIONS);
+                const custom = Array.from(new Set([...loadCustomRoleTypes(), ...rows.map((r) => r.role).filter((r) => r && !predefined.has(r as (typeof ROLE_OPTIONS)[number]))])).sort();
+                const removed = loadRemovedRoleTypes();
+                const opts = [...ROLE_OPTIONS.filter((r) => !removed.includes(r)), ...custom.filter((r) => !removed.includes(r)), ...removed.filter((r) => rows.some((x) => x.role === r)), CUSTOM_ROLE_PLACEHOLDER];
+                const firstRow = rows[0];
+                const renderRoleRow = (row: RoleAssignment, i: number) => {
+                  const isNew = newRoleAssignment && i === rows.length - 1;
+                  const showCustom = row.role === '' || row.role === CUSTOM_ROLE_PLACEHOLDER || (row.role && !predefined.has(row.role as (typeof ROLE_OPTIONS)[number]));
+                  const selVal = row.role && (predefined.has(row.role as (typeof ROLE_OPTIONS)[number]) || custom.includes(row.role)) ? row.role : CUSTOM_ROLE_PLACEHOLDER;
+                  return (
+                    <div key={isNew ? 'new' : `${row.role}-${row.userId}-${i}`} className="flex w-full items-center gap-3 pl-[calc(1rem+5rem)]">
+                      <select
+                        value={selVal}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === CUSTOM_ROLE_PLACEHOLDER) {
+                            if (isNew) setNewRoleAssignment((p) => (p ? { ...p, role: '' } : { role: '', userId: '' }));
+                            else updateRoles(assignList.map((a, j) => (j === i ? { ...a, role: '' } : a)));
+                          } else {
+                            if (isNew) setNewRoleAssignment((p) => (p ? { ...p, role: v } : { role: v, userId: '' }));
+                            else updateRoles(assignList.map((a, j) => (j === i ? { ...a, role: v } : a)));
+                          }
+                        }}
+                        className="min-w-[120px] rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm text-app-text-primary focus:border-[#2383e6] focus:outline-none"
+                      >
+                        {opts.map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                      {showCustom && (
+                        <input
+                          type="text"
+                          value={row.role && row.role !== CUSTOM_ROLE_PLACEHOLDER ? row.role : ''}
+                          onChange={(e) => {
+                            const r = e.target.value.trim();
+                            if (isNew) setNewRoleAssignment((p) => (p ? { ...p, role: r } : { role: r, userId: '' }));
+                            else updateRoles(assignList.map((a, j) => (j === i ? { ...a, role: r } : a)));
+                          }}
+                          placeholder="Role"
+                          className="min-w-[80px] rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm focus:border-[#2383e6] focus:outline-none"
+                        />
+                      )}
+                      <select
+                        value={row.userId}
+                        onChange={(e) => {
+                          const u = e.target.value;
+                          if (isNew) {
+                            if (u && row.role) updateRoles([...assignList, { role: row.role, userId: u }]);
+                            else if (u) setNewRoleAssignment((p) => (p ? { ...p, userId: u } : null));
+                            else setNewRoleAssignment((p) => (p ? { ...p, userId: '' } : null));
+                          } else {
+                            updateRoles(assignList.map((a, j) => (j === i ? { ...a, userId: u } : a)));
+                          }
+                        }}
+                        className="min-w-[140px] rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm text-app-text-primary focus:border-[#2383e6] focus:outline-none"
+                      >
+                        <option value="">— Person —</option>
+                        {users.map((u) => (
+                          <option key={u._id} value={u._id}>{u.name || u.email}</option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={() => (isNew ? setNewRoleAssignment(null) : updateRoles(assignList.filter((_, j) => j !== i)))} className="shrink-0 rounded-sm p-1 text-app-text-tertiary hover:bg-transparent hover:text-app-text-primary" aria-label="Remove">×</button>
+                    </div>
+                  );
+                };
+                return (
+                  <>
+                    <div className="flex w-full flex-wrap items-center gap-3">
+                      <IconPerson />
+                      <span className="w-20 shrink-0 text-sm text-app-text-secondary">Roles</span>
+                      {firstRow ? (
+                        <>
+                          <select
+                            value={firstRow.role && (predefined.has(firstRow.role as (typeof ROLE_OPTIONS)[number]) || custom.includes(firstRow.role)) ? firstRow.role : CUSTOM_ROLE_PLACEHOLDER}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (v === CUSTOM_ROLE_PLACEHOLDER) {
+                                if (rows.length === 1 && newRoleAssignment) setNewRoleAssignment((p) => (p ? { ...p, role: '' } : { role: '', userId: '' }));
+                                else updateRoles(assignList.map((a, j) => (j === 0 ? { ...a, role: '' } : a)));
+                              } else {
+                                if (rows.length === 1 && newRoleAssignment) setNewRoleAssignment((p) => (p ? { ...p, role: v } : { role: v, userId: '' }));
+                                else updateRoles(assignList.map((a, j) => (j === 0 ? { ...a, role: v } : a)));
+                              }
+                            }}
+                            className="min-w-[120px] rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm text-app-text-primary focus:border-[#2383e6] focus:outline-none"
+                          >
+                            {opts.map((r) => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </select>
+                          {(firstRow.role === '' || firstRow.role === CUSTOM_ROLE_PLACEHOLDER || (firstRow.role && !predefined.has(firstRow.role as (typeof ROLE_OPTIONS)[number]))) && (
+                            <input
+                              type="text"
+                              value={firstRow.role && firstRow.role !== CUSTOM_ROLE_PLACEHOLDER ? firstRow.role : ''}
+                              onChange={(e) => {
+                                const r = e.target.value.trim();
+                                if (rows.length === 1 && newRoleAssignment) setNewRoleAssignment((p) => (p ? { ...p, role: r } : { role: r, userId: '' }));
+                                else updateRoles(assignList.map((a, j) => (j === 0 ? { ...a, role: r } : a)));
+                              }}
+                              placeholder="Role"
+                              className="min-w-[80px] rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm focus:border-[#2383e6] focus:outline-none"
+                            />
+                          )}
+                          <select
+                            value={firstRow.userId}
+                            onChange={(e) => {
+                              const u = e.target.value;
+                              if (rows.length === 1 && newRoleAssignment) {
+                                if (u && firstRow.role) updateRoles([...assignList, { role: firstRow.role, userId: u }]);
+                                else if (u) setNewRoleAssignment((p) => (p ? { ...p, userId: u } : null));
+                                else setNewRoleAssignment((p) => (p ? { ...p, userId: '' } : null));
+                              } else {
+                                updateRoles(assignList.map((a, j) => (j === 0 ? { ...a, userId: u } : a)));
+                              }
+                            }}
+                            className="min-w-[140px] rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm text-app-text-primary focus:border-[#2383e6] focus:outline-none"
+                          >
+                            <option value="">— Person —</option>
+                            {users.map((u) => (
+                              <option key={u._id} value={u._id}>{u.name || u.email}</option>
+                            ))}
+                          </select>
+                          <button type="button" onClick={() => (rows.length === 1 && newRoleAssignment ? setNewRoleAssignment(null) : updateRoles(assignList.filter((_, j) => j !== 0)))} className="shrink-0 rounded-sm p-1 text-app-text-tertiary hover:bg-transparent hover:text-app-text-primary" aria-label="Remove">×</button>
+                        </>
+                      ) : (
+                        <button type="button" onClick={() => setNewRoleAssignment({ role: 'Producer', userId: '' })} className="rounded-sm border-0 px-3 py-1.5 text-sm font-medium text-app-text-secondary hover:border-[#37352f] hover:text-app-text-primary">Add role</button>
+                      )}
+                    </div>
+                    {rows.slice(1).map((row, i) => renderRoleRow(row, i + 1))}
+                    {rows.length > 0 && (
+                      <div className="border-0 pt-3 pl-[calc(1rem+5rem)]">
+                        {!newRoleAssignment && (
+                          <button type="button" onClick={() => setNewRoleAssignment({ role: 'Producer', userId: '' })} className="rounded-sm border-0 px-3 py-1.5 text-sm font-medium text-app-text-secondary hover:border-[#37352f] hover:text-app-text-primary">Add role</button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+            {/* Tags */}
+            <div className="flex items-center gap-3 py-2">
+              <IconProject />
+              <span className="w-20 shrink-0 text-sm text-app-text-secondary">Tags</span>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
                 {story.categories?.map((c) => (
-                  <span
-                    key={c}
-                    className="inline-flex items-center gap-1 rounded bg-app-bg-secondary pl-2 pr-1 py-0.5 text-app-text-secondary text-xs font-medium"
-                  >
+                  <span key={c} className="inline-flex items-center gap-0.5 rounded-sm bg-transparent pl-2 pr-1 py-0.5 text-sm text-app-text-primary">
                     {c}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveCategory(c)}
-                      className="rounded p-0.5 hover:bg-app-bg-hover hover:text-app-text-primary"
-                      aria-label={`Remove ${c}`}
-                    >
-                      ×
-                    </button>
+                    <button type="button" onClick={() => handleRemoveCategory(c)} className="rounded-sm p-0.5 hover:bg-transparent" aria-label={`Remove ${c}`}>×</button>
                   </span>
                 ))}
                 <input
@@ -529,556 +745,346 @@ export default function StoryDetail({ isModal, storyId: storyIdProp, onClose }: 
                   value={categoryInput}
                   onChange={(e) => setCategoryInput(e.target.value)}
                   onKeyDown={handleAddCategory}
-                  placeholder="+ Category"
-                  className="w-24 rounded border border-app-border-light bg-app-bg-primary px-2 py-1 text-app-text-primary text-xs placeholder-app-text-tertiary focus:border-app-blue focus:outline-none"
+                  placeholder="+ Add"
+                  className="w-14 border-0 bg-transparent py-0.5 text-sm text-app-text-tertiary placeholder:text-app-text-tertiary focus:outline-none"
                 />
-                {saving && <span className="text-app-text-tertiary text-xs">Saving…</span>}
               </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {isModal && (
-              <button
-                type="button"
-                onClick={handleSaveAll}
-                disabled={saving || !hasUnsavedChanges}
-                className="inline-flex items-center gap-1.5 rounded border-0 bg-app-accent-primary px-3 py-2 text-sm font-medium text-white transition-all duration-[120ms] ease-in hover:bg-app-accent-primary-hover disabled:cursor-default disabled:bg-app-bg-tertiary disabled:text-app-text-tertiary disabled:opacity-100 disabled:hover:opacity-100 disabled:hover:bg-app-bg-tertiary disabled:pointer-events-none"
-              >
-                {saving ? 'Saving…' : 'Save'}
-              </button>
-            )}
-            {normalizeStateKey(story.state) === 'finalization' && (
-              <button
-                type="button"
-                onClick={() => setPublishModalOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded border-0 bg-app-blue px-3 py-2 text-white text-sm font-medium transition-all duration-[120ms] ease-in hover:opacity-90"
-              >
-                Publish
-              </button>
-            )}
-            {!isModal && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setExportOpen((o) => !o)}
-                  className="inline-flex items-center gap-1.5 rounded border-0 bg-app-bg-tertiary px-3 py-2 text-app-text-primary text-sm font-medium transition-all duration-[120ms] ease-in hover:bg-app-bg-hover"
-                >
-                  Export
-                </button>
-                {exportOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} aria-hidden />
-                    <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-md border border-app-border-light bg-app-bg-primary py-1.5 shadow-[var(--shadow-lg)]">
-                      <button type="button" onClick={handlePrintPdf} className="flex w-full items-center gap-2 px-3 py-2 text-left text-app-text-primary text-sm transition-colors duration-[120ms] hover:bg-app-bg-hover">
-                        Print / Save as PDF
-                      </button>
-                      <button type="button" onClick={handleDownloadDocx} disabled={exporting} className="flex w-full items-center gap-2 px-3 py-2 text-left text-app-text-primary text-sm transition-colors duration-[120ms] hover:bg-app-bg-hover disabled:opacity-50">
-                        Download DOCX
-                      </button>
-                      <button type="button" onClick={handleDownloadHtml} disabled={exporting} className="flex w-full items-center gap-2 px-3 py-2 text-left text-app-text-primary text-sm transition-colors duration-[120ms] hover:bg-app-bg-hover disabled:opacity-50">
-                        Download HTML
-                      </button>
-                    </div>
-                  </>
+            {/* Add a property */}
+            <button type="button" onClick={() => setShowMoreProperties((v) => !v)} className="flex items-center gap-2 py-2 text-sm text-app-text-tertiary hover:text-app-text-primary">
+              <IconPlus />
+              Add a property
+            </button>
+
+            {/* More properties (Description, Checklist, Roles) */}
+            {showMoreProperties && (
+              <div className="border-0 pt-3 space-y-3">
+                <div>
+                  <LongTextField
+                    label="Description"
+                    value={story.description}
+                    onChange={(v) => { setStory((s) => (s ? { ...s, description: v } : s)); markDirty(); }}
+                    onSave={() => handleUpdateStory({ description: story.description })}
+                    placeholder="Add description…"
+                    charCountLabel="3 min"
+                    rows={3}
+                    variant="inline"
+                    saving={saving}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-app-text-secondary">Checklist</label>
+                  {story.checklist?.length ? (
+                    <ul className="space-y-1 text-sm text-app-text-primary">
+                      {story.checklist.map((c, i) => (
+                        <li key={i} className="flex items-center gap-2">
+                          <input type="checkbox" checked={c.completed} onChange={() => handleChecklistToggle(i)} className="h-3.5 w-3.5 rounded-sm" />
+                          <span className={c.completed ? 'text-app-text-tertiary line-through' : ''}>{c.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="text-sm text-app-text-tertiary">No checklist items.</p>}
+                  <div className="mt-2 flex gap-2">
+                    <input type="text" value={newChecklistItem} onChange={(e) => setNewChecklistItem(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddChecklistItem()} placeholder="Add item" className="min-w-0 flex-1 rounded-sm border-0 bg-transparent px-2 py-1 text-sm focus:border-[#2383e6] focus:outline-none" />
+                    <button type="button" onClick={handleAddChecklistItem} disabled={!newChecklistItem.trim()} className="rounded-sm bg-transparent px-2 py-1 text-sm text-app-text-primary hover:bg-transparent disabled:opacity-50">Add</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-app-text-secondary">Role assignments</label>
+                  <p className="mb-2 text-xs text-app-text-tertiary">Manage role types in <Link to="/preferences" className="text-[#2383e6] hover:underline">Preferences</Link>.</p>
+                  {(() => {
+                    const assignList = buildAssignmentsFromStory(story);
+                    const rows = newRoleAssignment ? [...assignList, newRoleAssignment] : assignList;
+                    const update = (next: RoleAssignment[]) => { handleUpdateStory({ teamMembers: next.filter((a) => a.role && a.userId) }); setNewRoleAssignment(null); };
+                    const predefined = new Set(ROLE_OPTIONS);
+                    const custom = Array.from(new Set([...loadCustomRoleTypes(), ...rows.map((r) => r.role).filter((r) => r && !predefined.has(r as (typeof ROLE_OPTIONS)[number]))])).sort();
+                    const removed = loadRemovedRoleTypes();
+                    const opts = [...ROLE_OPTIONS.filter((r) => !removed.includes(r)), ...custom.filter((r) => !removed.includes(r)), ...removed.filter((r) => rows.some((x) => x.role === r)), CUSTOM_ROLE_PLACEHOLDER];
+                    return (
+                      <div className="space-y-2">
+                        {rows.map((row, i) => {
+                          const isNew = newRoleAssignment && i === rows.length - 1;
+                          const showCustom = row.role === '' || row.role === CUSTOM_ROLE_PLACEHOLDER || (row.role && !predefined.has(row.role as (typeof ROLE_OPTIONS)[number]));
+                          const selVal = row.role && (predefined.has(row.role as (typeof ROLE_OPTIONS)[number]) || custom.includes(row.role)) ? row.role : CUSTOM_ROLE_PLACEHOLDER;
+                          return (
+                            <div key={isNew ? 'new' : `${row.role}-${row.userId}-${i}`} className="flex flex-wrap items-center gap-2">
+                              <select value={selVal} onChange={(e) => { const v = e.target.value; if (v === CUSTOM_ROLE_PLACEHOLDER) { if (isNew) setNewRoleAssignment((p) => (p ? { ...p, role: '' } : { role: '', userId: '' })); else update(assignList.map((a, j) => (j === i ? { ...a, role: '' } : a))); } else { if (isNew) setNewRoleAssignment((p) => (p ? { ...p, role: v } : { role: v, userId: '' })); else update(assignList.map((a, j) => (j === i ? { ...a, role: v } : a))); } }} className="rounded-sm border-0 bg-transparent px-2 py-1 text-sm focus:border-[#2383e6] focus:outline-none">
+                                {opts.map((r) => <option key={r} value={r}>{r}</option>)}
+                              </select>
+                              {showCustom && <input type="text" value={row.role && row.role !== CUSTOM_ROLE_PLACEHOLDER ? row.role : ''} onChange={(e) => { const r = e.target.value.trim(); if (isNew) setNewRoleAssignment((p) => (p ? { ...p, role: r } : { role: r, userId: '' })); else update(assignList.map((a, j) => (j === i ? { ...a, role: r } : a))); }} placeholder="Custom role" className="w-24 rounded-sm border-0 bg-transparent px-2 py-1 text-sm focus:border-[#2383e6] focus:outline-none" />}
+                              <select value={row.userId} onChange={(e) => { const u = e.target.value; if (isNew) { if (u && row.role) update([...assignList, { role: row.role, userId: u }]); else if (u) setNewRoleAssignment((p) => (p ? { ...p, userId: u } : null)); else setNewRoleAssignment((p) => (p ? { ...p, userId: '' } : null)); } else update(assignList.map((a, j) => (j === i ? { ...a, userId: u } : a))); }} className="rounded-sm border-0 bg-transparent px-2 py-1 text-sm focus:border-[#2383e6] focus:outline-none">
+                                <option value="">— Person —</option>
+                                {users.map((u) => <option key={u._id} value={u._id}>{u.name || u.email}</option>)}
+                              </select>
+                              <button type="button" onClick={() => { if (isNew) setNewRoleAssignment(null); else update(assignList.filter((_, j) => j !== i)); }} className="text-app-text-tertiary hover:text-app-text-primary" aria-label="Remove">×</button>
+                            </div>
+                          );
+                        })}
+                        {!newRoleAssignment && <button type="button" onClick={() => setNewRoleAssignment({ role: 'Producer', userId: '' })} className="text-sm text-app-text-tertiary hover:text-app-text-primary">+ Add assignment</button>}
+                      </div>
+                    );
+                  })()}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-app-text-secondary">Fact-checks</label>
+                  <FactCheckList factChecks={factChecks} compact />
+                </div>
+                {related && (related.parentStory || related.relatedStories.length > 0) && (
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-app-text-secondary">Related stories</label>
+                    {related.parentStory && <p className="mb-1 text-sm text-app-text-secondary">Series: <Link to={`/story/${related.parentStory._id}`} className="text-[#2383e6] hover:underline">{related.parentStory.headline}</Link></p>}
+                    <ul className="space-y-1 text-sm">
+                      {related.relatedStories.map((s) => (
+                        <li key={s._id} className={s._id === story._id ? 'font-medium text-app-text-primary' : ''}>
+                          {s._id === story._id ? s.headline : <Link to={`/story/${s._id}`} className="text-[#2383e6] hover:underline">{s.headline}</Link>}
+                          {s.archivedAt && <span className="ml-2 text-xs text-app-text-tertiary">Archived</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
             )}
-            {!isModal && (
-              <>
-                <span className="text-app-text-secondary text-sm">{user?.email}</span>
-                <button
-                  type="button"
-                  onClick={() => logout()}
-                  className="inline-flex items-center gap-1.5 rounded border-0 bg-app-bg-tertiary px-3 py-2 text-app-text-primary text-sm font-medium transition-all duration-[120ms] ease-in hover:bg-app-bg-hover"
-                >
-                  Sign out
-                </button>
-              </>
-            )}
+          </div>
+
+        </div>
+
+        {/* Team Notes – above Pieces, below Add a property */}
+        <div className="mt-3 rounded-sm border-0 bg-transparent px-3 py-3">
+          <h3 className="mb-1.5 text-sm font-medium text-app-text-primary">Team Notes</h3>
+          {comments.length > 0 && (
+            <ul className="mb-1.5 space-y-1">
+              {comments.map((c) => (
+                <li key={c._id} className="rounded-sm bg-transparent p-1.5 text-sm text-app-text-primary">
+                  <span className="text-xs text-app-text-secondary">{(c.userId as { name?: string })?.name ?? 'User'}</span>
+                  <p className="mt-0.5 whitespace-pre-wrap">{c.text}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-0 bg-transparent text-xs font-medium text-app-text-secondary">
+              {user?.name?.slice(0, 1) || user?.email?.slice(0, 1) || '?'}
+            </div>
+            <input
+              type="text"
+              value={newCommentText}
+              onChange={(e) => setNewCommentText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddComment(); } }}
+              placeholder="Add a note..."
+              className="min-w-0 flex-1 border-0 bg-transparent text-sm text-app-text-primary placeholder:text-app-text-tertiary outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleAddComment}
+              disabled={!newCommentText.trim() || submittingComment}
+              className="shrink-0 text-sm text-[#2383e6] hover:underline disabled:opacity-50"
+            >
+              {submittingComment ? 'Sending…' : 'Post'}
+            </button>
           </div>
         </div>
-      </header>
 
-      {/* Main */}
-      <main className={`mx-auto w-full max-w-[1400px] flex-1 ${isModal ? 'grid min-h-0 gap-3 overflow-hidden p-3' : 'flex gap-6 p-6 md:flex-col'}`} style={isModal ? { gridTemplateColumns: '7fr 3fr' } : undefined}>
-        <div className={`min-w-0 ${isModal ? 'overflow-auto' : 'flex-1'}`}>
-          <div className={`flex gap-1 border-b border-app-border-light ${isModal ? 'mb-3' : 'mb-6'}`}>
+        {/* Tabs + content below – single page flow; tab content border only when tab bar hovered */}
+        <div className="mt-3">
+          <div className="peer/tabs mb-2 flex gap-1 border-0">
             {TABS.map((tab) => (
               <button
                 key={tab}
                 type="button"
                 onClick={() => setActiveTab(tab)}
-                className={`border-b-2 px-4 py-2 text-app-text-secondary text-sm font-medium transition-all duration-[120ms] ${
-                  activeTab === tab
-                    ? 'border-app-blue text-app-text-primary'
-                    : 'border-transparent hover:bg-app-bg-hover hover:text-app-text-primary rounded-t'
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  activeTab === tab ? 'text-app-text-primary' : 'text-app-text-secondary hover:text-app-text-primary'
                 }`}
               >
                 {tab}
               </button>
             ))}
           </div>
-          {suggestedNextSteps && (
-            <p className="mb-3 text-app-text-secondary text-sm">
-              {suggestedNextSteps}
-            </p>
-          )}
-          <div className={`rounded border border-app-border-light bg-app-bg-primary shadow-[var(--shadow-sm)] ${isModal ? 'p-3' : 'p-6'}`}>
-            {activeTab === 'Script' && (
-              <ScriptEditor
-                ref={scriptEditorRef}
-                storyId={story._id}
-                currentUserId={user?._id ?? ''}
-                onAddFactCheck={handleAddFactCheck}
-                onDirty={markDirty}
+          {suggestedNextSteps && <p className="mb-2 text-sm text-app-text-secondary">{suggestedNextSteps}</p>}
+          <div className="rounded-sm border-0 bg-transparent p-3 shadow-sm transition-[border-color,background-color] peer-hover/tabs:border-transparent peer-hover/tabs:bg-transparent">
+            {activeTab === 'Research' && (
+              <LongTextField
+                label="Research"
+                value={story.researchNotes ?? ''}
+                onChange={(v) => { setStory((s) => (s ? { ...s, researchNotes: v } : s)); markDirty(); }}
+                onSave={() => handleUpdateStory({ researchNotes: story.researchNotes ?? '' })}
+                placeholder="Research notes and sources…"
+                rows={10}
+                variant="inline"
+                saving={saving}
               />
             )}
-            {activeTab === 'Research' && (
-              <div>
-                <h2 className="mb-3 text-app-text-secondary text-xs font-semibold uppercase tracking-wide">Research notes</h2>
-                <textarea
-                  value={story.researchNotes ?? ''}
-                  onChange={(e) => {
-                  setStory((s) => (s ? { ...s, researchNotes: e.target.value } : s));
-                  markDirty();
-                }}
-                  onBlur={(e) => handleUpdateStory({ researchNotes: e.target.value })}
-                  className="min-h-[80px] w-full resize-y rounded border border-app-border-light bg-app-bg-primary px-3 py-2 text-app-text-primary text-sm leading-normal transition-all duration-[120ms] placeholder-app-text-tertiary hover:border-app-border-medium focus:border-app-blue focus:outline-none focus:ring-1 focus:ring-app-blue"
-                  rows={8}
-                  placeholder="Research notes and sources…"
-                />
-              </div>
-            )}
             {activeTab === 'Media' && (
-              <div>
-                <h2 className="mb-3 text-app-text-secondary text-xs font-semibold uppercase tracking-wide">Media & attachments</h2>
-                <p className="text-app-text-secondary text-sm">
-                  Upload and attach images, video, or audio for this story. File storage (S3/R2) coming soon — you can paste links in Research notes for now.
-                </p>
-                <p className="mt-2 text-app-text-tertiary text-xs">Upload coming soon.</p>
-              </div>
+              <p className="text-sm text-app-text-secondary">Upload and attach media (coming soon). Paste links in Research for now.</p>
             )}
             {activeTab === 'Activity' && (
-              <div>
-                <h2 className="mb-3 text-app-text-secondary text-xs font-semibold uppercase tracking-wide">Activity</h2>
-                {activity.length === 0 ? (
-                  <p className="text-app-text-secondary mt-2">No activity yet.</p>
-                ) : (
-                  <ul className="mt-2 space-y-2">
-                    {activity.map((a) => (
-                      <li key={a._id} className="flex gap-2 text-app-text-primary text-sm">
-                        <span className="text-app-text-secondary">
-                          {(a.userId as { name?: string })?.name ?? 'User'} · {a.action}
-                        </span>
-                        <span className="text-app-text-tertiary">
-                          {new Date(a.createdAt).toLocaleString()}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+              activity.length === 0 ? <p className="text-sm text-app-text-secondary">No activity yet.</p> : (
+                <ul className="space-y-2 text-sm text-app-text-primary">
+                  {activity.map((a) => (
+                    <li key={a._id}>
+                      <span className="text-app-text-secondary">{(a.userId as { name?: string })?.name ?? 'User'} · {a.action}</span>
+                      <span className="ml-2 text-xs text-app-text-tertiary">{new Date(a.createdAt).toLocaleString()}</span>
+                    </li>
+                  ))}
+                </ul>
+              )
             )}
           </div>
         </div>
 
-        {/* Sidebar: 3/10 in popup; on full page fixed width */}
-        <aside className={`min-w-0 space-y-2 ${isModal ? 'overflow-auto border-l border-app-border-light pl-3' : 'w-80 shrink-0 space-y-3 md:w-full'}`}>
-          {/* Overview */}
-          <section className={`rounded border border-app-border-light bg-app-bg-primary ${isModal ? 'p-2' : 'p-4'}`}>
-            <h3 className={`text-app-text-secondary text-xs font-semibold uppercase tracking-wide ${isModal ? 'mb-2' : 'mb-3'} flex items-center gap-1.5`}>Overview</h3>
-            {story.kind !== 'parent' && (
-              <div className={isModal ? 'mb-2' : 'mb-4'}>
-                <h4 className="mb-1 text-app-text-tertiary text-xs font-medium">Part of series</h4>
-                {!isModal && (
-                  <p className="mb-2 text-app-text-tertiary text-xs">
-                    Link to a series to group with related stories.
-                  </p>
-                )}
-                <select
-                  value={typeof story.parentStoryId === 'string' ? story.parentStoryId : (story.parentStoryId as { _id?: string })?._id ?? ''}
-                  onChange={(e) => {
-                    const val = e.target.value.trim();
-                    handleUpdateStory({ parentStoryId: val || '' });
-                  }}
-                  className={`w-full rounded border border-app-border-light bg-app-bg-primary text-app-text-primary focus:border-app-blue focus:outline-none ${isModal ? 'px-1.5 py-1 text-xs' : 'px-2 py-1.5 text-sm'}`}
-                >
-                  <option value="">None</option>
-                  {parentStories.map((p) => (
-                    <option key={p._id} value={p._id}>
-                      {p.headline}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div>
-              <h4 className="mb-1 text-app-text-tertiary text-xs font-medium">Description</h4>
-              <textarea
-                value={story.description}
-                onChange={(e) => {
-                  setStory((s) => (s ? { ...s, description: e.target.value } : s));
-                  markDirty();
-                }}
-                onBlur={(e) => e.target.value !== story.description && handleUpdateStory({ description: e.target.value })}
-                className={`w-full resize-y rounded border border-app-border-light bg-app-bg-primary px-1.5 py-1 text-app-text-primary leading-normal transition-all duration-[120ms] placeholder-app-text-tertiary hover:border-app-border-medium focus:border-app-blue focus:outline-none focus:ring-1 focus:ring-app-blue ${isModal ? 'min-h-[60px] text-xs' : 'min-h-[80px] px-2 py-1.5 text-sm'}`}
-                rows={isModal ? 3 : 5}
-                minLength={140}
-              />
-              <p className="mt-0.5 text-app-text-tertiary text-xs">{story.description.length} characters (min 140)</p>
-            </div>
-          </section>
-          <section className={`rounded border border-app-border-light bg-app-bg-secondary ${isModal ? 'p-2' : 'p-4'}`}>
-            <h3 className={`text-app-text-secondary text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5 ${isModal ? 'mb-2' : 'mb-3'}`}>Role assignments</h3>
-            <p className="mb-3 text-app-text-tertiary text-xs">Assign people to roles. You can add multiple people per role. Manage role types in <Link to="/preferences" className="text-app-blue underline hover:no-underline">Preferences</Link>.</p>
-            <div className="space-y-2 text-sm">
-              {(() => {
-                const assignments = buildAssignmentsFromStory(story);
-                const rows = newRoleAssignment ? [...assignments, newRoleAssignment] : assignments;
-                const updateAssignments = (next: RoleAssignment[]) => {
-                  const valid = next.filter((a) => a.role && a.userId);
-                  handleUpdateStory({ teamMembers: valid });
-                  setNewRoleAssignment(null);
-                };
-                const predefinedSet = new Set(ROLE_OPTIONS);
-                const customFromPrefs = loadCustomRoleTypes();
-                const customFromStory = rows.map((r) => r.role).filter((role) => role && !predefinedSet.has(role as (typeof ROLE_OPTIONS)[number]));
-                const customRoles = Array.from(new Set([...customFromPrefs, ...customFromStory])).sort();
-                const removedRoleTypes = loadRemovedRoleTypes();
-                const rolesInUse = rows.map((r) => r.role).filter(Boolean);
-                const removedButInUse = removedRoleTypes.filter((r) => rolesInUse.includes(r));
-                const roleOptions = [
-                  ...ROLE_OPTIONS.filter((r) => !removedRoleTypes.includes(r)),
-                  ...customRoles.filter((r) => !removedRoleTypes.includes(r)),
-                  ...removedButInUse,
-                  CUSTOM_ROLE_PLACEHOLDER,
-                ];
-
-                return (
-                  <>
-                    {rows.map((row, i) => {
-                      const isNew = Boolean(newRoleAssignment && i === rows.length - 1);
-                      const isCustomRole = row.role && !predefinedSet.has(row.role as (typeof ROLE_OPTIONS)[number]);
-                      const showCustomInput = isCustomRole || row.role === '' || row.role === CUSTOM_ROLE_PLACEHOLDER;
-                      const selectValue =
-                        row.role && (predefinedSet.has(row.role as (typeof ROLE_OPTIONS)[number]) || customRoles.includes(row.role))
-                          ? row.role
-                          : CUSTOM_ROLE_PLACEHOLDER;
-                      return (
-                        <div key={isNew ? 'new' : `${row.role}-${row.userId}-${i}`} className="flex flex-wrap items-center gap-2">
-                          <select
-                            value={selectValue}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              if (value === CUSTOM_ROLE_PLACEHOLDER) {
-                                if (isNew) {
-                                  setNewRoleAssignment((prev) => (prev ? { ...prev, role: '' } : { role: '', userId: '' }));
-                                } else {
-                                  const next = assignments.map((a, j) => (j === i ? { ...a, role: '' } : a));
-                                  updateAssignments(next);
-                                }
-                              } else {
-                                if (isNew) {
-                                  setNewRoleAssignment((prev) => (prev ? { ...prev, role: value } : { role: value, userId: '' }));
-                                } else {
-                                  const next = assignments.map((a, j) => (j === i ? { ...a, role: value } : a));
-                                  updateAssignments(next);
-                                }
-                              }
-                            }}
-                            className="min-w-0 flex-1 rounded border border-app-border-light bg-app-bg-primary px-2 py-1.5 text-app-text-primary text-sm focus:border-app-blue focus:outline-none"
-                          >
-                            {roleOptions.map((r) => (
-                              <option key={r} value={r}>{r}</option>
-                            ))}
-                          </select>
-                          {showCustomInput ? (
-                            <input
-                              type="text"
-                              value={row.role && row.role !== CUSTOM_ROLE_PLACEHOLDER ? row.role : ''}
-                              onChange={(e) => {
-                                const role = e.target.value.trim();
-                                if (isNew) {
-                                  const nextRole = role || '';
-                                  setNewRoleAssignment((prev) => (prev ? { ...prev, role: nextRole } : { role: nextRole, userId: '' }));
-                                  if (nextRole && row.userId) {
-                                    updateAssignments([...assignments, { role: nextRole, userId: row.userId }]);
-                                  }
-                                } else {
-                                  const next = assignments.map((a, j) => (j === i ? { ...a, role: role || '' } : a));
-                                  updateAssignments(next);
-                                }
-                              }}
-                              placeholder="Type custom role"
-                              className="min-w-0 flex-1 rounded border border-app-border-light bg-app-bg-primary px-2 py-1.5 text-app-text-primary text-sm placeholder-app-text-tertiary focus:border-app-blue focus:outline-none"
-                            />
-                          ) : null}
-                          <select
-                            value={row.userId}
-                            onChange={(e) => {
-                              const userId = e.target.value;
-                              if (isNew) {
-                                if (userId && row.role) {
-                                  updateAssignments([...assignments, { role: row.role, userId }]);
-                                } else if (userId) {
-                                  setNewRoleAssignment((prev) => (prev ? { ...prev, userId } : null));
-                                } else {
-                                  setNewRoleAssignment((prev) => (prev ? { ...prev, userId: '' } : null));
-                                }
-                              } else {
-                                const next = assignments.map((a, j) => (j === i ? { ...a, userId } : a));
-                                updateAssignments(next);
-                              }
-                            }}
-                            className="min-w-0 flex-1 rounded border border-app-border-light bg-app-bg-primary px-2 py-1.5 text-app-text-primary text-sm focus:border-app-blue focus:outline-none"
-                          >
-                            <option value="">— Select person —</option>
-                            {users.map((u) => (
-                              <option key={u._id} value={u._id}>{u.name || u.email}</option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (isNew) {
-                                setNewRoleAssignment(null);
-                              } else {
-                                updateAssignments(assignments.filter((_, j) => j !== i));
-                              }
-                            }}
-                            className="shrink-0 rounded p-1.5 text-app-text-tertiary hover:bg-app-bg-hover hover:text-app-red"
-                            aria-label={isNew ? 'Cancel add' : 'Remove'}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      );
-                    })}
-                    {!newRoleAssignment && (
+        {/* Pieces – below Research / Media / Activity */}
+        {story.kind !== 'parent' && (
+          <div className="mt-6 space-y-4 rounded-sm border-0 bg-transparent p-3 shadow-sm">
+            <h3 className="text-sm font-medium text-app-text-primary">Pieces</h3>
+            {pieces.length > 0 || showAddPiece ? (
+              <>
+                <ul className="space-y-2">
+                  {pieces.map((out) => {
+                    const currentLinkedIds = (out.linkedStoryIds ?? []).map((s) => (typeof s === 'string' ? s : s._id));
+                    const otherLinkedIds = id ? currentLinkedIds.filter((sid) => sid !== id) : currentLinkedIds;
+                    return (
+                      <li key={out._id} className="flex flex-wrap items-center justify-between gap-2 rounded-sm border-0 bg-transparent px-3 py-2 transition-[border-color,background-color] hover:bg-app-bg-hover">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/piece/${out._id}`, { state: { from: location.pathname } })}
+                          className="min-w-0 flex-1 cursor-pointer rounded-sm border-0 bg-transparent p-0 text-left focus:outline-none focus:ring-1 focus:ring-[#2383e6]"
+                        >
+                          <span className="font-medium text-app-text-primary">{out.headline}</span>
+                          <span className="ml-2 rounded-sm bg-transparent px-1.5 py-0.5 text-xs text-app-text-secondary">{getPieceTypeDisplayLabel(out.format)}</span>
+                          <span className="ml-2 text-xs text-app-text-tertiary">In: {PIECE_STATE_LABELS[out.state] ?? out.state}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!id || !confirm(`Unlink "${out.headline}" from this story? The piece will stay in the database and on the board.`)) return;
+                            try {
+                              await piecesApi.update(out._id, { linkedStoryIds: otherLinkedIds });
+                              if (editingPieceId === out._id) setEditingPieceId(null);
+                              await fetchPieces();
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : 'Failed to unlink piece');
+                            }
+                          }}
+                          className="shrink-0 rounded-sm border-0 bg-transparent px-2 py-1 text-sm text-app-text-secondary hover:bg-app-bg-elevated hover:text-app-text-primary"
+                        >
+                          Unlink
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowAddPiece(true); setAddPieceHeadline(''); setAddPieceFormat('instagram_reels'); }}
+                    className="rounded-sm border-0 bg-transparent px-3 py-2 text-sm font-medium text-app-text-primary hover:border-transparent hover:bg-transparent"
+                  >
+                    + Add piece
+                  </button>
+                </div>
+                {showAddPiece && (
+                  <div className="rounded-sm border-0 bg-transparent p-4">
+                    <h4 className="mb-3 text-sm font-medium text-app-text-primary">New content piece</h4>
+                    {story?.researchNotes != null && story.researchNotes.trim() !== '' && (
+                      <div className="mb-3 rounded border border-app-border bg-app-bg-secondary p-3">
+                        <p className="mb-1.5 text-xs font-medium text-app-text-secondary">Research (this story)</p>
+                        <div className="max-h-32 overflow-y-auto whitespace-pre-wrap text-sm text-app-text-primary">{story.researchNotes}</div>
+                      </div>
+                    )}
+                    <div className="mb-3">
+                      <label className="mb-1 block text-xs text-app-text-secondary">Format</label>
+                      <select value={addPieceFormat} onChange={(e) => setAddPieceFormat(e.target.value)} className="w-full rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm text-app-text-primary focus:border-[#2383e6] focus:outline-none">
+                        {getAvailablePieceTypes().map((f) => (
+                          <option key={f} value={f}>{getPieceTypeDisplayLabel(f)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="mb-3">
+                      <label className="mb-1 block text-xs text-app-text-secondary">Headline</label>
+                      <input type="text" value={addPieceHeadline} onChange={(e) => setAddPieceHeadline(e.target.value)} placeholder="e.g. Housing crisis – Reels cut" className="w-full rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm text-app-text-primary placeholder:text-app-text-tertiary focus:border-[#2383e6] focus:outline-none" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setShowAddPiece(false)} className="rounded-sm border-0 bg-transparent px-3 py-1.5 text-sm text-app-text-primary hover:border-transparent hover:bg-transparent">Cancel</button>
                       <button
                         type="button"
-                        onClick={() => setNewRoleAssignment({ role: 'Producer', userId: '' })}
-                        className="rounded border border-app-border-light bg-app-bg-tertiary px-2 py-1 text-app-text-primary text-sm hover:bg-app-bg-hover"
+                        disabled={!addPieceHeadline.trim() || creatingPiece}
+                        onClick={async () => {
+                          if (!id || !addPieceHeadline.trim()) return;
+                          setCreatingPiece(true);
+                          try {
+                            await piecesApi.create(id, { format: addPieceFormat, headline: addPieceHeadline.trim() });
+                            await fetchPieces();
+                            setShowAddPiece(false);
+                            setAddPieceHeadline('');
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Failed to create piece');
+                          } finally {
+                            setCreatingPiece(false);
+                          }
+                        }}
+                        className="rounded-sm bg-[#2383e6] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
                       >
-                        + Add assignment
+                        {creatingPiece ? 'Creating…' : 'Create'}
                       </button>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-          </section>
-          <section className={`rounded border border-app-border-light bg-app-bg-secondary ${isModal ? 'p-2' : 'p-4'}`}>
-            <h3 className={`text-app-text-secondary text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5 ${isModal ? 'mb-2' : 'mb-3'}`}>Deadlines</h3>
-            {story.deadlines?.length ? (
-              <ul className="space-y-2 text-app-text-primary text-sm">
-                {story.deadlines.map((d, i) => (
-                  <li key={i} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={d.completed ?? false}
-                      onChange={() => handleDeadlineToggleComplete(i)}
-                      className="h-4 w-4 shrink-0 rounded border-app-border-medium"
-                    />
-                    <span className={d.completed ? 'text-app-text-tertiary line-through' : ''}>{d.name}: {new Date(d.date).toLocaleDateString()}</span>
-                    <button type="button" onClick={() => handleRemoveDeadline(i)} className="ml-auto rounded p-0.5 text-app-text-tertiary hover:bg-app-bg-hover hover:text-app-red" aria-label="Remove">×</button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-app-text-secondary text-sm">No deadlines.</p>
-            )}
-            <div className="mt-2 flex gap-1">
-              <input
-                type="text"
-                value={newDeadline.name}
-                onChange={(e) => setNewDeadline((prev) => ({ ...prev, name: e.target.value }))}
-                placeholder="Name"
-                className="min-w-0 flex-1 rounded border border-app-border-light bg-app-bg-primary px-2 py-1 text-app-text-primary text-sm placeholder-app-text-tertiary focus:border-app-blue focus:outline-none"
-              />
-              <input
-                type="date"
-                value={newDeadline.date}
-                onChange={(e) => setNewDeadline((prev) => ({ ...prev, date: e.target.value }))}
-                className="rounded border border-app-border-light bg-app-bg-primary px-2 py-1 text-app-text-primary text-sm focus:border-app-blue focus:outline-none"
-              />
-              <button type="button" onClick={handleAddDeadline} disabled={!newDeadline.name.trim()} className="rounded border border-app-border-light bg-app-bg-tertiary px-2 py-1 text-app-text-primary text-sm hover:bg-app-bg-hover disabled:opacity-50">Add</button>
-            </div>
-          </section>
-          <section className={`rounded border border-app-border-light bg-app-bg-secondary ${isModal ? 'p-2' : 'p-4'}`}>
-            <h3 className={`text-app-text-secondary text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5 ${isModal ? 'mb-2' : 'mb-3'}`}>Checklist</h3>
-            {story.checklist?.length ? (
-              <ul className="space-y-1 text-app-text-primary text-sm">
-                {story.checklist.map((c, i) => (
-                  <li key={i} className="flex items-start gap-2 py-1">
-                    <input
-                      type="checkbox"
-                      checked={c.completed}
-                      onChange={() => handleChecklistToggle(i)}
-                      className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-[1.5px] border-app-border-medium transition-colors duration-[120ms] hover:border-app-blue checked:border-app-blue checked:bg-app-blue"
-                    />
-                    <span className={c.completed ? 'text-app-text-tertiary line-through' : ''}>{c.text}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-app-text-secondary text-sm">No checklist items.</p>
-            )}
-            <div className="mt-2 flex gap-1">
-              <input
-                type="text"
-                value={newChecklistItem}
-                onChange={(e) => setNewChecklistItem(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddChecklistItem()}
-                placeholder="Add item"
-                className="min-w-0 flex-1 rounded border border-app-border-light bg-app-bg-primary px-2 py-1 text-app-text-primary text-sm placeholder-app-text-tertiary focus:border-app-blue focus:outline-none"
-              />
-              <button type="button" onClick={handleAddChecklistItem} disabled={!newChecklistItem.trim()} className="rounded border border-app-border-light bg-app-bg-tertiary px-2 py-1 text-app-text-primary text-sm hover:bg-app-bg-hover disabled:opacity-50">Add</button>
-            </div>
-          </section>
-          <section className={`rounded border border-app-border-light bg-app-bg-secondary ${isModal ? 'p-2' : 'p-4'}`}>
-            <h3 className={`text-app-text-secondary text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5 ${isModal ? 'mb-2' : 'mb-3'}`}>Fact-checks</h3>
-            <div>
-              <FactCheckList factChecks={factChecks} />
-            </div>
-          </section>
-          <section className={`rounded border border-app-border-light bg-app-bg-secondary ${isModal ? 'p-2' : 'p-4'}`}>
-            <h3 className={`text-app-text-secondary text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5 ${isModal ? 'mb-2' : 'mb-3'}`}>Comments</h3>
-            {comments.length === 0 ? (
-              <p className="text-app-text-secondary text-sm">No comments yet.</p>
-            ) : (
-              <ul className="mb-3 max-h-40 space-y-2 overflow-y-auto text-app-text-primary text-sm">
-                {comments.map((c) => (
-                  <li key={c._id} className="rounded bg-app-bg-primary p-2">
-                    <span className="text-app-text-secondary text-xs">{(c.userId as { name?: string })?.name ?? 'User'}</span>
-                    <p className="mt-0.5 whitespace-pre-wrap">{c.text}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <textarea
-              value={newCommentText}
-              onChange={(e) => setNewCommentText(e.target.value)}
-              placeholder="Add a comment…"
-              rows={2}
-              className="w-full resize-y rounded border border-app-border-light bg-app-bg-primary px-2 py-1.5 text-app-text-primary text-sm placeholder-app-text-tertiary focus:border-app-blue focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={handleAddComment}
-              disabled={!newCommentText.trim() || submittingComment}
-              className="mt-2 rounded border border-app-border-light bg-app-bg-tertiary px-2 py-1 text-app-text-primary text-sm hover:bg-app-bg-hover disabled:opacity-50"
-            >
-              {submittingComment ? 'Sending…' : 'Add comment'}
-            </button>
-          </section>
-          {related && (related.parentStory || related.relatedStories.length > 0) && (
-            <section className={`rounded border border-app-border-light bg-app-bg-secondary ${isModal ? 'p-2' : 'p-4'}`}>
-              <h3 className={`text-app-text-secondary text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5 ${isModal ? 'mb-2' : 'mb-3'}`}>Related stories</h3>
-              {related.parentStory && (
-                <p className={`mb-2 text-app-text-secondary ${isModal ? 'text-xs' : 'text-sm'}`}>
-                  Part of series:{' '}
-                  <Link to={`/story/${related.parentStory._id}`} className="text-app-blue underline hover:no-underline">
-                    {related.parentStory.headline}
-                  </Link>
-                </p>
-              )}
-              <ul className="space-y-2">
-                {related.relatedStories.map((s) => {
-                  const isCurrent = s._id === story._id;
-                  const status = s.archivedAt ? 'Archived' : normalizeStateKey(s.state) === 'published' ? 'Published' : getStateDisplayLabel(s.state);
-                  return (
-                    <li key={s._id} className={`flex items-center justify-between gap-2 rounded border px-2 py-1.5 ${isModal ? 'text-xs' : 'text-sm'} ${isCurrent ? 'border-app-blue bg-app-bg-secondary' : 'border-app-border-light bg-app-bg-primary'}`}>
-                      {isCurrent ? (
-                        <span className="min-w-0 flex-1 truncate font-medium text-app-text-primary">{s.headline}</span>
-                      ) : (
-                        <Link to={`/story/${s._id}`} className="min-w-0 flex-1 truncate text-app-blue hover:underline">{s.headline}</Link>
-                      )}
-                      <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${s.archivedAt ? 'bg-app-bg-tertiary text-app-text-secondary' : normalizeStateKey(s.state) === 'published' ? 'bg-[#27AE60]/20 text-[#27AE60]' : 'bg-app-bg-tertiary text-app-text-secondary'}`}>{status}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          )}
-        </aside>
-      </main>
-
-      {isModal && (
-        <footer className="shrink-0 border-t border-app-border-light bg-app-bg-primary px-6 py-3">
-          <div className="mx-auto flex max-w-[1400px] justify-end">
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setExportOpen((o) => !o)}
-                className="inline-flex items-center gap-1.5 rounded border-0 bg-app-bg-tertiary px-3 py-2 text-app-text-primary text-sm font-medium transition-all duration-[120ms] ease-in hover:bg-app-bg-hover"
-              >
-                Export
-              </button>
-              {exportOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} aria-hidden />
-                  <div className="absolute right-0 bottom-full z-20 mb-1 min-w-[180px] rounded-md border border-app-border-light bg-app-bg-primary py-1.5 shadow-[var(--shadow-lg)]">
-                    <button type="button" onClick={handlePrintPdf} className="flex w-full items-center gap-2 px-3 py-2 text-left text-app-text-primary text-sm transition-colors duration-[120ms] hover:bg-app-bg-hover">
-                      Print / Save as PDF
-                    </button>
-                    <button type="button" onClick={handleDownloadDocx} disabled={exporting} className="flex w-full items-center gap-2 px-3 py-2 text-left text-app-text-primary text-sm transition-colors duration-[120ms] hover:bg-app-bg-hover disabled:opacity-50">
-                      Download DOCX
-                    </button>
-                    <button type="button" onClick={handleDownloadHtml} disabled={exporting} className="flex w-full items-center gap-2 px-3 py-2 text-left text-app-text-primary text-sm transition-colors duration-[120ms] hover:bg-app-bg-hover disabled:opacity-50">
-                      Download HTML
-                    </button>
+                    </div>
                   </div>
-                </>
-              )}
-            </div>
+                )}
+                {editingPieceId && (() => {
+                  const out = pieces.find((o) => o._id === editingPieceId);
+                  if (!out) return null;
+                  return (
+                    <div className="mt-6 border-0 pt-4">
+                      <div className="mb-3 flex items-center justify-between rounded-sm border-0 bg-transparent px-3 py-2 text-sm text-app-text-primary transition-[border-color,background-color] group/scriptbar hover:border-transparent hover:bg-transparent">
+                        <span>Editing script: <strong>{out.headline}</strong> ({getPieceTypeDisplayLabel(out.format)})</span>
+                        <button type="button" onClick={() => setEditingPieceId(null)} className="rounded-sm border-0 bg-transparent px-2 py-1 text-[#2383e6] hover:border-transparent hover:bg-transparent">Done</button>
+                      </div>
+                      <ScriptEditor
+                        ref={scriptEditorRef}
+                        storyId={story._id}
+                        pieceId={editingPieceId}
+                        currentUserId={user?._id ?? ''}
+                        onAddFactCheck={handleAddFactCheck}
+                        onDirty={markDirty}
+                      />
+                    </div>
+                  );
+                })()}
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowAddPiece(true); setAddPieceHeadline(''); setAddPieceFormat('instagram_reels'); }}
+                  className="rounded-sm border-0 bg-transparent px-3 py-2 text-sm font-medium text-app-text-primary hover:border-transparent hover:bg-transparent"
+                >
+                  + Add piece
+                </button>
+              </div>
+            )}
           </div>
-        </footer>
-      )}
+        )}
+
+        {/* Full-page: Export, user, sign out */}
+        {!isModal && (
+          <div className="mt-4 flex items-center justify-end gap-2">
+            <span className="text-sm text-app-text-secondary">{user?.email}</span>
+            <button type="button" onClick={() => logout()} className="rounded-sm px-3 py-1.5 text-sm text-app-text-primary hover:bg-transparent">Sign out</button>
+          </div>
+        )}
+      </div>
 
       {factCheckModal && (
         <AddFactCheckModal
           selection={factCheckModal.selection}
-          scriptVersion={story.currentScriptVersion ?? 0}
           onClose={() => setFactCheckModal(null)}
           onSubmit={handleSubmitFactCheck}
         />
       )}
 
-      {publishModalOpen && (
-        <>
-          <div className="fixed inset-0 z-[1000] bg-black/40" onClick={() => setPublishModalOpen(false)} aria-hidden />
-          <div className="fixed left-1/2 top-1/2 z-[1001] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-app-border-light bg-app-bg-primary p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="publish-modal-title">
-            <h2 id="publish-modal-title" className="text-app-text-primary text-lg font-semibold">Publish story</h2>
-            <p className="mt-2 text-app-text-secondary text-sm">
-              Move this story to <strong>Published</strong>? This action is final; you can change state back from the header if needed.
-            </p>
-            {(pendingFactCount > 0 || checklistIncomplete) && (
-              <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-amber-800 text-sm dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-                {pendingFactCount > 0 && <p>{pendingFactCount} fact-check(s) still pending.</p>}
-                {checklistIncomplete && <p>Checklist is not fully completed.</p>}
-                <p className="mt-1">You can still publish; resolve these before going live if needed.</p>
-              </div>
-            )}
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setPublishModalOpen(false)}
-                className="rounded border border-app-border-light bg-app-bg-tertiary px-3 py-2 text-app-text-primary text-sm hover:bg-app-bg-hover"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmPublish}
-                className="rounded border-0 bg-app-blue px-3 py-2 text-white text-sm font-medium hover:opacity-90"
-              >
-                Publish
-              </button>
-            </div>
-          </div>
-        </>
-      )}
     </div>
   );
-}
+});
+
+export default StoryDetail;

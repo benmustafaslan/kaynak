@@ -16,6 +16,7 @@ function formatDate(iso: string): string {
 
 export interface IdeaCardProps {
   idea: Story;
+  onOpen?: (idea: Story) => void;
   onApprove: (idea: Story) => void;
   onApproveAsMine?: (idea: Story) => void;
   onReject: (idea: Story) => void;
@@ -24,12 +25,20 @@ export interface IdeaCardProps {
   isProducer?: boolean;
 }
 
-export function IdeaCard({ idea, onApprove, onApproveAsMine, onReject, onPark, canApprove, isProducer }: IdeaCardProps) {
+export function IdeaCard({ idea, onOpen, onApprove, onApproveAsMine, onReject, onPark, canApprove, isProducer }: IdeaCardProps) {
   const createdByName = getDisplayName(idea.createdBy);
 
   return (
     <div className="idea-card">
-      <h3 className="idea-card-headline">{idea.headline}</h3>
+      <h3 className="idea-card-headline">
+        {onOpen ? (
+          <button type="button" onClick={() => onOpen(idea)} className="idea-card-headline-link">
+            {idea.headline}
+          </button>
+        ) : (
+          idea.headline
+        )}
+      </h3>
       <p className="idea-description">{idea.description}</p>
 
       <div className="idea-meta">

@@ -6,25 +6,25 @@ export default {
       colors: {
         app: {
           bg: {
-            primary: '#FFFFFF',
-            secondary: '#FAFAFA',
-            tertiary: '#F5F5F5',
-            page: '#F8F8F8',
-            hover: '#F0F0F0',
+            primary: '#191919',
+            secondary: '#202020',
+            tertiary: '#2c2c2c',
+            page: '#191919',
+            hover: '#2c2c2c',
           },
           text: {
-            primary: '#1a1a1a',
-            secondary: '#666666',
-            tertiary: '#999999',
+            primary: '#E5E5E5',
+            secondary: '#A0A0A0',
+            tertiary: '#808080',
           },
           border: {
-            light: '#E5E5E5',
-            medium: '#d4d4d4',
+            light: '#2c2c2c',
+            medium: '#404040',
           },
           accent: {
-            primary: '#8B5CF6',
-            'primary-hover': '#7C3AED',
-            'primary-light': 'rgba(139, 92, 246, 0.1)',
+            primary: '#A78BFA',
+            'primary-hover': '#C4B5FD',
+            'primary-light': 'rgba(167, 139, 250, 0.15)',
           },
         },
       },

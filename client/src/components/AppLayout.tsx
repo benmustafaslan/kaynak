@@ -3,8 +3,9 @@ import { Link, Outlet, useLocation, useMatch, useNavigate } from 'react-router-d
 import { useAuthStore } from '../stores/authStore';
 import { storiesApi } from '../utils/storiesApi';
 import { StoryDetailModal } from './StoryDetailModal';
+import { PieceDetailModal } from './PieceDetailModal';
 import Board from '../pages/Board';
-import OngoingSeries from '../pages/OngoingSeries';
+import Stories from '../pages/Stories';
 import IdeasInbox from '../pages/IdeasInbox';
 
 function IconBoard() {
@@ -56,6 +57,25 @@ function IconPreferences() {
   );
 }
 
+function IconMenu() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <line x1="3" y1="12" x2="21" y2="12" />
+      <line x1="3" y1="18" x2="21" y2="18" />
+    </svg>
+  );
+}
+
+function IconClose() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
 export function AppLayout() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
@@ -63,11 +83,18 @@ export function AppLayout() {
   const navigate = useNavigate();
   const storyMatch = useMatch('/story/:id');
   const storyId = storyMatch?.params?.id;
+  const pieceMatch = useMatch('/piece/:id');
+  const pieceId = pieceMatch?.params?.id;
   const [unapprovedCount, setUnapprovedCount] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const fromPath = (location.state as { from?: string })?.from ?? '/board';
 
   const closeStoryModal = () => {
+    navigate(fromPath, { replace: true });
+  };
+
+  const closePieceModal = () => {
     navigate(fromPath, { replace: true });
   };
 
@@ -86,39 +113,54 @@ export function AppLayout() {
     };
   }, [location.pathname]);
 
-  const isBoard = location.pathname === '/board' && !storyId;
-  const isSeries = location.pathname === '/series' && !storyId;
-  const isIdeas = location.pathname === '/ideas' && !storyId;
+  const isBoard = location.pathname === '/board' && !storyId && !pieceId;
+  const isStories = location.pathname === '/stories' && !storyId && !pieceId;
+  const isIdeas = location.pathname === '/ideas' && !storyId && !pieceId;
   const isPreferences = location.pathname === '/preferences';
 
-  // Render Board/Series/Ideas directly when we're on that route OR when the story modal
-  // was opened from that page. This keeps the same component instance when closing the
-  // modal, so the page doesn't remount and refresh.
-  const showBoard = location.pathname === '/board' || (storyId && fromPath === '/board');
-  const showSeries = location.pathname === '/series' || (storyId && fromPath === '/series');
-  const showIdeasPage = location.pathname === '/ideas' || (storyId && fromPath === '/ideas');
+  // Render Board/Stories/Ideas when on that route OR when the story/piece modal was opened from that page
+  // (keeps the same component instance when closing the modal). Use Outlet only for other routes.
+  const showBoard = location.pathname === '/board' || ((storyId || pieceId) && fromPath === '/board');
+  const showStories = location.pathname === '/stories' || ((storyId || pieceId) && fromPath === '/stories');
+  const showIdeasPage = location.pathname === '/ideas' || ((storyId || pieceId) && fromPath === '/ideas');
+
+  const closeMobileMenu = () => setMobileMenuOpen(false);
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--app-bg)' }}>
-      <aside className="app-sidebar">
+      {mobileMenuOpen && (
+        <button
+          type="button"
+          className="app-sidebar-overlay"
+          onClick={closeMobileMenu}
+          aria-label="Close menu"
+        />
+      )}
+      <aside
+        className={`app-sidebar ${mobileMenuOpen ? 'app-sidebar-mobile-open' : ''}`}
+        aria-hidden={!mobileMenuOpen}
+      >
         <nav className="app-sidebar-nav">
+          <Link
+            to="/stories"
+            className={`app-sidebar-link ${isStories ? 'active' : ''}`}
+            onClick={closeMobileMenu}
+          >
+            <IconSeries />
+            <span className="app-sidebar-link-text">Stories</span>
+          </Link>
           <Link
             to="/board"
             className={`app-sidebar-link ${isBoard ? 'active' : ''}`}
+            onClick={closeMobileMenu}
           >
             <IconBoard />
-            <span className="app-sidebar-link-text">Board</span>
-          </Link>
-          <Link
-            to="/series"
-            className={`app-sidebar-link ${isSeries ? 'active' : ''}`}
-          >
-            <IconSeries />
-            <span className="app-sidebar-link-text">Ongoing Series</span>
+            <span className="app-sidebar-link-text">Pieces</span>
           </Link>
           <Link
             to="/ideas"
             className={`app-sidebar-link ${isIdeas ? 'active' : ''}`}
+            onClick={closeMobileMenu}
           >
             <IconInbox />
             <span className="app-sidebar-link-text">Agenda Tracking</span>
@@ -131,6 +173,7 @@ export function AppLayout() {
           <Link
             to="/archive"
             className={`app-sidebar-link ${location.pathname === '/archive' ? 'active' : ''}`}
+            onClick={closeMobileMenu}
           >
             <IconArchive />
             <span className="app-sidebar-link-text">Archive</span>
@@ -138,6 +181,7 @@ export function AppLayout() {
           <Link
             to="/preferences"
             className={`app-sidebar-link ${isPreferences ? 'active' : ''}`}
+            onClick={closeMobileMenu}
           >
             <IconPreferences />
             <span className="app-sidebar-link-text">Preferences</span>
@@ -152,7 +196,7 @@ export function AppLayout() {
           </span>
           <button
             type="button"
-            onClick={() => logout()}
+            onClick={() => { closeMobileMenu(); logout(); }}
             className="app-sidebar-link app-sidebar-signout"
           >
             Sign out
@@ -160,11 +204,21 @@ export function AppLayout() {
         </div>
       </aside>
 
+      <button
+        type="button"
+        className="app-sidebar-menu-btn"
+        onClick={() => setMobileMenuOpen((open) => !open)}
+        aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+        aria-expanded={mobileMenuOpen}
+      >
+        {mobileMenuOpen ? <IconClose /> : <IconMenu />}
+      </button>
+
       <main className="app-main">
         {showBoard ? (
           <Board />
-        ) : showSeries ? (
-          <OngoingSeries />
+        ) : showStories ? (
+          <Stories />
         ) : showIdeasPage ? (
           <IdeasInbox />
         ) : (
@@ -175,6 +229,12 @@ export function AppLayout() {
         <StoryDetailModal
           storyId={storyId}
           onClose={closeStoryModal}
+        />
+      )}
+      {pieceId && (
+        <PieceDetailModal
+          pieceId={pieceId}
+          onClose={closePieceModal}
         />
       )}
     </div>

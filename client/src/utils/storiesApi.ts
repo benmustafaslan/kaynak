@@ -14,6 +14,8 @@ interface ListParams {
   stateNe?: string;
   /** When 'parent', returns only story packages (parents). Otherwise parents are excluded from list. */
   kind?: 'parent';
+  /** When true, returns only stories that were rejected (rejectedAt set). Used for Archive "Rejected Ideas". */
+  rejected?: boolean;
 }
 
 interface ListResponse {
@@ -38,6 +40,7 @@ export const storiesApi = {
     if (params?.state) sp.set('state', params.state);
     if (params?.stateNe) sp.set('stateNe', params.stateNe);
     if (params?.kind === 'parent') sp.set('kind', 'parent');
+    if (params?.rejected === true) sp.set('rejected', 'true');
     const q = sp.toString();
     return api.get<ListResponse>(`/stories${q ? `?${q}` : ''}`);
   },

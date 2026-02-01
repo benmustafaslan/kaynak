@@ -21,7 +21,7 @@ function normalizeStoryState(story) {
 export const list = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const { myStories, overdue, category, search, page = 1, limit = 50, approved, state, stateNe, sort } = req.query;
+    const { myStories, overdue, category, search, page = 1, limit = 50, approved, state, stateNe, sort, rejected } = req.query;
 
     const query = { deletedAt: null };
 
@@ -30,6 +30,11 @@ export const list = async (req, res, next) => {
       query.kind = 'parent';
     } else {
       query.$or = [{ kind: { $ne: 'parent' } }, { kind: { $exists: false } }];
+    }
+
+    // Archive: rejected ideas (stories with rejectedAt set)
+    if (rejected === 'true') {
+      query.rejectedAt = { $ne: null };
     }
 
     // Board view: stateNe 'idea' means "all workflow stories" — show non-idea regardless of approved flag
@@ -91,7 +96,7 @@ export const list = async (req, res, next) => {
     else if (sort === 'createdAtDesc') sortOption = { createdAt: -1 };
     else if (sort === 'createdAtAsc') sortOption = { createdAt: 1 };
 
-    const [stories, total] = await Promise.all([
+    const [rawStories, total] = await Promise.all([
       Story.find(baseQuery)
         .sort(sortOption)
         .skip(skip)
@@ -104,6 +109,14 @@ export const list = async (req, res, next) => {
         .lean(),
       Story.countDocuments(baseQuery),
     ]);
+    // Dedupe by _id (Mongoose find returns unique docs; this guards against any edge case)
+    const seen = new Set();
+    const stories = rawStories.filter((s) => {
+      const id = s._id?.toString?.() ?? String(s._id);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
     stories.forEach(normalizeStoryState);
 
     res.json({ stories, total, page: Number(page) || 1, limit: limitNum });
@@ -225,7 +238,7 @@ export const create = async (req, res, next) => {
     let descriptionValue =
       typeof description === 'string' ? description.trim().slice(0, 50000) : '';
     if (isParent) {
-      if (descriptionValue.length < 140) {
+      if (descriptionValue.length < 3) {
         descriptionValue = PARENT_DESCRIPTION_PLACEHOLDER;
       }
     } else {
@@ -333,7 +346,7 @@ export const update = async (req, res, next) => {
     if (description !== undefined) {
       const desc = typeof description === 'string' ? description.trim().slice(0, 50000) : '';
       if (story.kind === 'parent') {
-        story.description = desc.length >= 140 ? desc : PARENT_DESCRIPTION_PLACEHOLDER;
+        story.description = desc.length >= 3 ? desc : PARENT_DESCRIPTION_PLACEHOLDER;
       } else {
         if (desc.length < 3) {
           return res.status(400).json({ error: 'Description must be at least 3 characters' });

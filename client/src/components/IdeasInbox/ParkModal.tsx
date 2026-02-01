@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ModalShell } from '../ModalShell';
 
 interface ParkModalProps {
   ideaHeadline: string;
@@ -23,40 +24,35 @@ export function ParkModal({ ideaHeadline, onClose, onConfirm }: ParkModalProps) 
   const minDate = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="modal-overlay animate-fade-in" onClick={onClose}>
-      <div
-        className="modal animate-slide-up"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <h2 className="modal-title">Park for Later</h2>
-        </div>
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <p style={{ fontSize: 14, color: 'var(--medium-gray)' }}>
-              Hide &quot;{ideaHeadline}&quot; until a date. It will reappear in Agenda Tracking after that.
-            </p>
-            <div>
-              <label className="form-label">Show again after</label>
-              <input
-                type="date"
-                value={dateStr || defaultDate.toISOString().slice(0, 10)}
-                onChange={(e) => setDateStr(e.target.value)}
-                min={minDate}
-                className="form-input"
-              />
-            </div>
-          </div>
-          <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-ghost">
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-secondary">
-              Park
-            </button>
-          </div>
-        </form>
+    <ModalShell variant="form" onRequestClose={onClose}>
+      <div className="modal-header">
+        <h2 className="modal-title">Park for Later</h2>
       </div>
-    </div>
+      <form onSubmit={handleSubmit}>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <p style={{ fontSize: 14, color: 'var(--medium-gray)' }}>
+            Hide &quot;{ideaHeadline}&quot; until a date. It will reappear in Agenda Tracking after that.
+          </p>
+          <div>
+            <label className="form-label">Show again after</label>
+            <input
+              type="date"
+              value={dateStr || defaultDate.toISOString().slice(0, 10)}
+              onChange={(e) => setDateStr(e.target.value)}
+              min={minDate}
+              className="form-input"
+            />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button type="button" onClick={onClose} className="btn btn-ghost">
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-secondary">
+            Park
+          </button>
+        </div>
+      </form>
+    </ModalShell>
   );
 }

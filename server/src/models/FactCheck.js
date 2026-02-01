@@ -8,7 +8,8 @@ const textSelectionSchema = new mongoose.Schema({
 
 const factCheckSchema = new mongoose.Schema(
   {
-    storyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Story', required: true },
+    storyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Story', required: false, default: null },
+    outputId: { type: mongoose.Schema.Types.ObjectId, ref: 'Piece', default: null },
     scriptVersion: { type: Number, required: true },
     textSelection: { type: textSelectionSchema, required: true },
     type: {
@@ -31,6 +32,7 @@ const factCheckSchema = new mongoose.Schema(
 );
 
 factCheckSchema.index({ storyId: 1, scriptVersion: 1 });
+factCheckSchema.index({ outputId: 1, scriptVersion: 1 });
 
 const FactCheck = mongoose.model('FactCheck', factCheckSchema);
 export default FactCheck;

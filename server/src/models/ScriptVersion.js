@@ -4,7 +4,8 @@ const LOCK_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
 const scriptVersionSchema = new mongoose.Schema(
   {
-    storyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Story', required: true },
+    storyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Story', required: false, default: null },
+    outputId: { type: mongoose.Schema.Types.ObjectId, ref: 'Piece', default: null },
     version: { type: Number, required: true },
     content: { type: String, default: '' },
     wordCount: { type: Number, default: 0 },
@@ -18,7 +19,8 @@ const scriptVersionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-scriptVersionSchema.index({ storyId: 1, version: 1 }, { unique: true });
+scriptVersionSchema.index({ storyId: 1, version: 1 }, { unique: true, partialFilterExpression: { outputId: null } });
+scriptVersionSchema.index({ outputId: 1, version: 1 }, { unique: true, partialFilterExpression: { outputId: { $ne: null } } });
 
 scriptVersionSchema.statics.isLockExpired = function (doc) {
   if (!doc?.locked || !doc.lockExpires) return true;

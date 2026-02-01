@@ -1,4 +1,5 @@
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
@@ -14,7 +15,6 @@ import connectDB from './config/database.js';
 import { env } from './config/env.js';
 import routes from './routes/index.js';
 import { apiLimiter } from './middleware/rateLimit.js';
-
 await connectDB();
 
 const app = express();
@@ -35,7 +35,16 @@ app.get('/health', (req, res) => {
   res.json({ ok: true });
 });
 
-app.use((err, req, res, next) => {
+// In production, serve the built React app so you can run everything at one URL
+const clientDist = path.join(rootDir, 'client', 'dist');
+if (env.nodeEnv === 'production' && fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
+
+app.use(async (err, req, res, next) => {
   console.error(err.stack);
   res.status(err.status || 500).json({
     error: env.nodeEnv === 'production' ? 'Internal server error' : err.message,

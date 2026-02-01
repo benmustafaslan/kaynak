@@ -34,9 +34,9 @@ export function isDueThisWeek(story: Story): boolean {
 }
 
 export function isPublishedThisMonth(story: Story): boolean {
-  if (story.state !== 'published') return false;
+  if (!story.publishedAt) return false;
   const now = new Date();
-  const published = new Date(story.publishedAt ?? story.updatedAt);
+  const published = new Date(story.publishedAt);
   return (
     published.getMonth() === now.getMonth() &&
     published.getFullYear() === now.getFullYear()

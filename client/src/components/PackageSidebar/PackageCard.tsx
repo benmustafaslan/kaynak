@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import type { Story, StoryState } from '../../types/story';
-import { STATE_CONFIG, getStateDisplayLabel, normalizeStateKey } from '../../types/story';
+import { Link } from 'react-router-dom';
+import type { Story } from '../../types/story';
 import { storiesApi } from '../../utils/storiesApi';
+import { LongTextField } from '../LongTextField';
 
 const PACKAGE_ACCENT = '#6366f1';
 
@@ -11,9 +11,13 @@ interface PackageCardProps {
   onUpdated: (updated: Story) => void;
   onDeleted: () => void;
   onStoryAdded: () => void;
+  onReject?: (pkg: Story) => void;
+  onPark?: (pkg: Story) => void;
+  onApprove?: (pkg: Story) => void;
+  canApprove?: boolean;
 }
 
-export function PackageCard({ pkg, onUpdated, onDeleted, onStoryAdded }: PackageCardProps) {
+export function PackageCard({ pkg, onUpdated, onDeleted, onStoryAdded, onReject, onPark, onApprove, canApprove }: PackageCardProps) {
   const [mode, setMode] = useState<'display' | 'edit' | 'expanded'>('display');
   const [editHeadline, setEditHeadline] = useState(pkg.headline);
   const [editDescription, setEditDescription] = useState(pkg.description ?? '');
@@ -127,16 +131,15 @@ export function PackageCard({ pkg, onUpdated, onDeleted, onStoryAdded }: Package
             maxLength={500}
           />
         </label>
-        <label className="package-sidebar-form-label">
-          Description
-          <textarea
-            value={editDescription}
-            onChange={(e) => setEditDescription(e.target.value)}
-            className="package-sidebar-form-textarea"
-            rows={2}
-            maxLength={500}
-          />
-        </label>
+        <LongTextField
+          label="Description"
+          value={editDescription}
+          onChange={setEditDescription}
+          placeholder="Short description"
+          rows={2}
+          maxLength={500}
+          variant="form"
+        />
         <div className="package-sidebar-form-actions">
           <button
             type="button"
@@ -170,7 +173,7 @@ export function PackageCard({ pkg, onUpdated, onDeleted, onStoryAdded }: Package
           onClick={handleHeadlineClick}
           className="package-card-headline-btn"
           aria-expanded={mode === 'expanded'}
-          aria-label={mode === 'expanded' ? 'Collapse package' : 'Expand to see child stories'}
+          aria-label={mode === 'expanded' ? 'Collapse series' : 'Expand to see child stories'}
         >
           <span className="package-card-icon" aria-hidden>📦</span>
           <span className="package-card-headline">{pkg.headline}</span>
@@ -181,6 +184,38 @@ export function PackageCard({ pkg, onUpdated, onDeleted, onStoryAdded }: Package
           </span>
         </div>
         <div className="package-card-actions">
+          {canApprove && onApprove && (
+            <>
+              <button
+                type="button"
+                onClick={() => onApprove(pkg)}
+                className="package-card-action"
+                aria-label="Approve series"
+              >
+                ✓ Approve
+              </button>
+              {onPark && (
+                <button
+                  type="button"
+                  onClick={() => onPark(pkg)}
+                  className="package-card-action"
+                  aria-label="Park series"
+                >
+                  ⏸ Park
+                </button>
+              )}
+              {onReject && (
+                <button
+                  type="button"
+                  onClick={() => onReject(pkg)}
+                  className="package-card-action"
+                  aria-label="Reject series"
+                >
+                  ✗ Reject
+                </button>
+              )}
+            </>
+          )}
           <button
             type="button"
             onClick={handleEdit}
@@ -211,21 +246,12 @@ export function PackageCard({ pkg, onUpdated, onDeleted, onStoryAdded }: Package
                   <Link to={`/story/${s._id}`} state={{ from: location.pathname }} className="package-card-child-link">
                     <span className="package-card-child-bullet">•</span>
                     <span className="package-card-child-headline">{s.headline}</span>
-                    <span
-                      className="package-card-child-state"
-                      style={{
-                        backgroundColor: `${(STATE_CONFIG as Record<string, { color: string }>)[normalizeStateKey(s.state) || (s.state as string)?.toLowerCase?.() || '']?.color ?? '#888'}20`,
-                        color: (STATE_CONFIG as Record<string, { color: string }>)[normalizeStateKey(s.state) || (s.state as string)?.toLowerCase?.() || '']?.color ?? '#666',
-                      }}
-                    >
-                      {normalizeStateKey(s.state) === 'published' ? '✓ Published' : getStateDisplayLabel(s.state)}
-                    </span>
                   </Link>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="package-card-children-empty">No stories in this package yet.</p>
+            <p className="package-card-children-empty">No stories in this series yet.</p>
           )}
           <button
             type="button"

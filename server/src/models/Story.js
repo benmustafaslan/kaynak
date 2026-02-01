@@ -38,7 +38,7 @@ const storySchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      minlength: 140,
+      minlength: 3,
       maxlength: 50000,
     },
     state: {

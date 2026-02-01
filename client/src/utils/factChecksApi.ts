@@ -23,10 +23,17 @@ export interface FactCheckComment {
   createdAt: string;
 }
 
+function factChecksBase(storyId: string, pieceId?: string) {
+  if (pieceId) {
+    return `/pieces/${pieceId}/fact-checks`;
+  }
+  return `/stories/${storyId}/fact-checks`;
+}
+
 export const factChecksApi = {
-  list: (storyId: string, scriptVersion?: number) => {
+  list: (storyId: string, scriptVersion?: number, pieceId?: string) => {
     const q = scriptVersion != null ? `?scriptVersion=${scriptVersion}` : '';
-    return api.get<{ factChecks: FactCheck[] }>(`/stories/${storyId}/fact-checks${q}`);
+    return api.get<{ factChecks: FactCheck[] }>(`${factChecksBase(storyId, pieceId)}${q}`);
   },
 
   create: (
@@ -37,18 +44,20 @@ export const factChecksApi = {
       type?: string;
       note?: string;
       assignedTo?: string | null;
-    }
-  ) => api.post<FactCheck>(`/stories/${storyId}/fact-checks`, data),
+    },
+    pieceId?: string
+  ) => api.post<FactCheck>(factChecksBase(storyId, pieceId), data),
 
   update: (
     storyId: string,
     factCheckId: string,
-    data: { status?: string; note?: string; assignedTo?: string | null }
-  ) => api.patch<FactCheck>(`/stories/${storyId}/fact-checks/${factCheckId}`, data),
+    data: { status?: string; note?: string; assignedTo?: string | null },
+    pieceId?: string
+  ) => api.patch<FactCheck>(`${factChecksBase(storyId, pieceId)}/${factCheckId}`, data),
 
-  getComments: (storyId: string, factCheckId: string) =>
-    api.get<{ comments: FactCheckComment[] }>(`/stories/${storyId}/fact-checks/${factCheckId}/comments`),
+  getComments: (storyId: string, factCheckId: string, pieceId?: string) =>
+    api.get<{ comments: FactCheckComment[] }>(`${factChecksBase(storyId, pieceId)}/${factCheckId}/comments`),
 
-  addComment: (storyId: string, factCheckId: string, text: string) =>
-    api.post<FactCheckComment>(`/stories/${storyId}/fact-checks/${factCheckId}/comments`, { text }),
+  addComment: (storyId: string, factCheckId: string, text: string, pieceId?: string) =>
+    api.post<FactCheckComment>(`${factChecksBase(storyId, pieceId)}/${factCheckId}/comments`, { text }),
 };

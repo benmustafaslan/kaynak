@@ -1,0 +1,51 @@
+---
+description: Modal and popup views must save or apply changes when user clicks outside (backdrop) or presses Escape
+globs: **/*Modal*.tsx,**/*modal*.tsx,**/StoryDetailModal.tsx,**/PieceDetailModal.tsx
+alwaysApply: false
+---
+
+# Popup / Modal: Save on Click-Outside
+
+**Rule:** All popup and modal views that contain editable state **must** save or apply changes when the user:
+
+- Clicks outside the popup (on the backdrop/overlay), or
+- Presses Escape.
+
+Do **not** close without saving when the user dismisses via backdrop or Escape.
+
+## Implementation
+
+1. **Single overlay wrapper**  
+   Use one overlay div that covers the full viewport and handles `onClick`. Only trigger save/close when the click target is the overlay itself (`e.target === e.currentTarget`), not when the user clicked inside the modal content.
+
+2. **Stop propagation on content**  
+   On the modal content container (the inner box), use `onClick={(e) => e.stopPropagation()}` so clicks inside the modal do not bubble to the overlay.
+
+3. **Escape key**  
+   Listen for `keydown` with `e.key === 'Escape'` and call the same save-then-close handler.
+
+4. **Async save**  
+   If the save is async (e.g. `ref.current?.saveAndClose?.()` returns a Promise), do not call the parent `onClose` before save completes. The child’s `saveAndClose` should `await` the save and then call `onClose()`. The overlay handler can call the ref’s `saveAndClose()` without awaiting; the modal should stay open until the child calls `onClose()` after save.
+
+## Example (detail modals)
+
+```tsx
+// Overlay: click on backdrop saves then closes
+const handleOverlayClick = (e: React.MouseEvent) => {
+  if (e.target !== e.currentTarget) return;
+  saveAndClose();
+};
+
+return (
+  <div className="fixed inset-0 z-[1100] ..." onClick={handleOverlayClick}>
+    <div
+      className="... modal content ..."
+      onClick={(e) => e.stopPropagation()}
+    >
+      {children}
+    </div>
+  </div>
+);
+```
+
+For simple confirmation/form modals (no unsaved edits), closing on backdrop click without saving is acceptable.
