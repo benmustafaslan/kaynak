@@ -16,7 +16,7 @@ import { FactCheckList } from '../components/FactCheck/FactCheckList';
 import { piecesApi } from '../utils/piecesApi';
 import type { Piece } from '../types/piece';
 import { PIECE_STATE_LABELS } from '../types/piece';
-import { getAvailablePieceTypes, getPieceTypeDisplayLabel } from '../utils/pieceTypesPreferences';
+import { getAvailablePieceTypes, getPieceTypeDisplayLabel, getPieceTypeTemplate } from '../utils/pieceTypesPreferences';
 import { SeriesSearchBar } from '../components/Kanban/SeriesSearchBar';
 import { LongTextField } from '../components/LongTextField';
 
@@ -107,7 +107,8 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
   { isModal, storyId: storyIdProp, onClose },
   ref
 ) {
-  const paramsId = useParams<{ id: string }>().id;
+  const { id: paramsId, workspaceSlug } = useParams<{ id: string; workspaceSlug?: string }>();
+  const basePath = workspaceSlug ? `/w/${workspaceSlug}` : '';
   const id = isModal && storyIdProp ? storyIdProp : paramsId;
   const location = useLocation();
   const navigate = useNavigate();
@@ -139,8 +140,10 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
   const [pieces, setPieces] = useState<Piece[]>([]);
   const [editingPieceId, setEditingPieceId] = useState<string | null>(null);
   const [showAddPiece, setShowAddPiece] = useState(false);
+  const addPieceDefaultFormat = getAvailablePieceTypes()[0] ?? 'other';
+  const addPieceTemplateHeadline = (fmt: string) => (getPieceTypeTemplate(fmt)?.headline ?? '').trim();
   const [addPieceHeadline, setAddPieceHeadline] = useState('');
-  const [addPieceFormat, setAddPieceFormat] = useState<string>(() => getAvailablePieceTypes()[0] ?? 'other');
+  const [addPieceFormat, setAddPieceFormat] = useState<string>(addPieceDefaultFormat);
   const [creatingPiece, setCreatingPiece] = useState(false);
   const dirtyRef = useRef(false);
   const [, setDirtyTick] = useState(0);
@@ -454,7 +457,7 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
       </svg>
     </button>
   ) : (
-    <Link to="/board" className="text-app-text-secondary text-sm transition-colors duration-[120ms] hover:text-app-text-primary">← Board</Link>
+    <Link to={`${basePath}/board`} className="text-app-text-secondary text-sm transition-colors duration-[120ms] hover:text-app-text-primary">← Board</Link>
   );
 
   if (loading && !story) {
@@ -540,6 +543,23 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
                     <button type="button" onClick={handlePrintPdf} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-app-text-primary hover:bg-transparent">Print / PDF</button>
                     <button type="button" onClick={handleDownloadDocx} disabled={exporting} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-app-text-primary hover:bg-transparent disabled:opacity-50">Download DOCX</button>
                     <button type="button" onClick={handleDownloadHtml} disabled={exporting} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-app-text-primary hover:bg-transparent disabled:opacity-50">Download HTML</button>
+                    {(story.state?.toLowerCase() === 'archived' ? (
+                      <button
+                        type="button"
+                        onClick={() => { setExportOpen(false); handleUpdateStory({ state: 'published' }); }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-app-text-primary hover:bg-transparent"
+                      >
+                        Unarchive
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { setExportOpen(false); handleUpdateStory({ state: 'archived' }); }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-app-text-primary hover:bg-transparent"
+                      >
+                        Archive
+                      </button>
+                    ))}
                   </div>
                 </>
               )}
@@ -791,7 +811,7 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-app-text-secondary">Role assignments</label>
-                  <p className="mb-2 text-xs text-app-text-tertiary">Manage role types in <Link to="/preferences" className="text-[#2383e6] hover:underline">Preferences</Link>.</p>
+                  <p className="mb-2 text-xs text-app-text-tertiary">Manage role types in <Link to={`${basePath}/preferences`} className="text-[#2383e6] hover:underline">Preferences</Link>.</p>
                   {(() => {
                     const assignList = buildAssignmentsFromStory(story);
                     const rows = newRoleAssignment ? [...assignList, newRoleAssignment] : assignList;
@@ -832,11 +852,11 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
                 {related && (related.parentStory || related.relatedStories.length > 0) && (
                   <div>
                     <label className="mb-1 block text-xs font-medium text-app-text-secondary">Related stories</label>
-                    {related.parentStory && <p className="mb-1 text-sm text-app-text-secondary">Series: <Link to={`/story/${related.parentStory._id}`} className="text-[#2383e6] hover:underline">{related.parentStory.headline}</Link></p>}
+                    {related.parentStory && <p className="mb-1 text-sm text-app-text-secondary">Series: <Link to={`${basePath}/story/${related.parentStory._id}`} className="text-[#2383e6] hover:underline">{related.parentStory.headline}</Link></p>}
                     <ul className="space-y-1 text-sm">
                       {related.relatedStories.map((s) => (
                         <li key={s._id} className={s._id === story._id ? 'font-medium text-app-text-primary' : ''}>
-                          {s._id === story._id ? s.headline : <Link to={`/story/${s._id}`} className="text-[#2383e6] hover:underline">{s.headline}</Link>}
+                          {s._id === story._id ? s.headline : <Link to={`${basePath}/story/${s._id}`} className="text-[#2383e6] hover:underline">{s.headline}</Link>}
                           {s.archivedAt && <span className="ml-2 text-xs text-app-text-tertiary">Archived</span>}
                         </li>
                       ))}
@@ -947,7 +967,7 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
                       <li key={out._id} className="flex flex-wrap items-center justify-between gap-2 rounded-sm border-0 bg-transparent px-3 py-2 transition-[border-color,background-color] hover:bg-app-bg-hover">
                         <button
                           type="button"
-                          onClick={() => navigate(`/piece/${out._id}`, { state: { from: location.pathname } })}
+                          onClick={() => navigate(`${basePath}/piece/${out._id}`, { state: { from: location.pathname } })}
                           className="min-w-0 flex-1 cursor-pointer rounded-sm border-0 bg-transparent p-0 text-left focus:outline-none focus:ring-1 focus:ring-[#2383e6]"
                         >
                           <span className="font-medium text-app-text-primary">{out.headline}</span>
@@ -978,7 +998,7 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => { setShowAddPiece(true); setAddPieceHeadline(''); setAddPieceFormat('instagram_reels'); }}
+                    onClick={() => { setShowAddPiece(true); setAddPieceFormat(addPieceDefaultFormat); setAddPieceHeadline(addPieceTemplateHeadline(addPieceDefaultFormat)); }}
                     className="rounded-sm border-0 bg-transparent px-3 py-2 text-sm font-medium text-app-text-primary hover:border-transparent hover:bg-transparent"
                   >
                     + Add piece
@@ -995,7 +1015,15 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
                     )}
                     <div className="mb-3">
                       <label className="mb-1 block text-xs text-app-text-secondary">Format</label>
-                      <select value={addPieceFormat} onChange={(e) => setAddPieceFormat(e.target.value)} className="w-full rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm text-app-text-primary focus:border-[#2383e6] focus:outline-none">
+                      <select
+                        value={addPieceFormat}
+                        onChange={(e) => {
+                          const fmt = e.target.value;
+                          setAddPieceFormat(fmt);
+                          setAddPieceHeadline(addPieceTemplateHeadline(fmt));
+                        }}
+                        className="w-full rounded-sm border-0 bg-transparent px-2 py-1.5 text-sm text-app-text-primary focus:border-[#2383e6] focus:outline-none"
+                      >
                         {getAvailablePieceTypes().map((f) => (
                           <option key={f} value={f}>{getPieceTypeDisplayLabel(f)}</option>
                         ))}
@@ -1045,6 +1073,7 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
                         storyId={story._id}
                         pieceId={editingPieceId}
                         currentUserId={user?._id ?? ''}
+                        initialContentWhenEmpty={getPieceTypeTemplate(out.format)?.script ?? ''}
                         onAddFactCheck={handleAddFactCheck}
                         onDirty={markDirty}
                       />
@@ -1056,7 +1085,7 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => { setShowAddPiece(true); setAddPieceHeadline(''); setAddPieceFormat('instagram_reels'); }}
+                  onClick={() => { setShowAddPiece(true); setAddPieceFormat(addPieceDefaultFormat); setAddPieceHeadline(addPieceTemplateHeadline(addPieceDefaultFormat)); }}
                   className="rounded-sm border-0 bg-transparent px-3 py-2 text-sm font-medium text-app-text-primary hover:border-transparent hover:bg-transparent"
                 >
                   + Add piece

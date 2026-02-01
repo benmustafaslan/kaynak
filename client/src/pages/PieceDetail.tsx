@@ -1,12 +1,12 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import type { Piece, LinkedStoryRef } from '../types/piece';
 import type { Story } from '../types/story';
 import { piecesApi } from '../utils/piecesApi';
 import { storiesApi } from '../utils/storiesApi';
 import { ScriptEditor, type ScriptEditorHandle } from '../components/ScriptEditor/ScriptEditor';
-import { getPieceTypeDisplayLabel, getAvailablePieceTypes } from '../utils/pieceTypesPreferences';
+import { getPieceTypeDisplayLabel, getAvailablePieceTypes, getPieceTypeTemplate } from '../utils/pieceTypesPreferences';
 import { PIECE_STATES, PIECE_STATE_LABELS } from '../types/piece';
 
 export interface PieceDetailProps {
@@ -27,6 +27,8 @@ const PieceDetail = forwardRef<PieceDetailHandle, PieceDetailProps>(function Pie
   ref
 ) {
   const pieceId = pieceIdProp;
+  const { workspaceSlug } = useParams<{ workspaceSlug?: string }>();
+  const basePath = workspaceSlug ? `/w/${workspaceSlug}` : '';
   const user = useAuthStore((s) => s.user);
   const [piece, setPiece] = useState<Piece | null>(null);
   const [loading, setLoading] = useState(true);
@@ -268,6 +270,7 @@ const PieceDetail = forwardRef<PieceDetailHandle, PieceDetailProps>(function Pie
               storyId=""
               pieceId={pieceId}
               currentUserId={user?._id ?? ''}
+              initialContentWhenEmpty={piece ? (getPieceTypeTemplate(piece.format)?.script ?? '') : ''}
               onDirty={() => {}}
             />
           </div>
@@ -289,7 +292,7 @@ const PieceDetail = forwardRef<PieceDetailHandle, PieceDetailProps>(function Pie
                   : research;
                 return (
                   <div key={s._id} className="rounded bg-app-bg-primary p-3">
-                    <Link to={`/story/${s._id}`} className="text-sm font-medium text-app-text-primary hover:underline">
+                    <Link to={`${basePath}/story/${s._id}`} className="text-sm font-medium text-app-text-primary hover:underline">
                       {s.headline}
                     </Link>
                     {hasResearch ? (

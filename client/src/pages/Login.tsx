@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 
 export default function Login() {
+  const [searchParams] = useSearchParams();
+  const next = searchParams.get('next') || '/w';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -15,7 +17,7 @@ export default function Login() {
     setError('');
     try {
       await login(email, password);
-      navigate('/board');
+      navigate(next.startsWith('/') ? next : `/${next}`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     }
@@ -83,7 +85,7 @@ export default function Login() {
         </form>
         <p className="mt-8 text-center text-sm" style={{ color: 'var(--medium-gray)' }}>
           No account?{' '}
-          <Link to="/register" className="link-accent">
+          <Link to={next !== '/w' ? `/register?next=${encodeURIComponent(next)}` : '/register'} className="link-accent">
             Register
           </Link>
         </p>

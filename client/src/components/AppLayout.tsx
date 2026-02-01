@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link, Outlet, useLocation, useMatch, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useMatch, useNavigate, useParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { useWorkspaceStore } from '../stores/workspaceStore';
 import { storiesApi } from '../utils/storiesApi';
+import { workspacesApi } from '../utils/workspacesApi';
 import { StoryDetailModal } from './StoryDetailModal';
 import { PieceDetailModal } from './PieceDetailModal';
-import Board from '../pages/Board';
-import Stories from '../pages/Stories';
-import IdeasInbox from '../pages/IdeasInbox';
 
 function IconBoard() {
   return (
@@ -48,6 +47,17 @@ function IconArchive() {
   );
 }
 
+function IconInvite() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <line x1="19" y1="8" x2="19" y2="14" />
+      <line x1="22" y1="11" x2="16" y2="11" />
+    </svg>
+  );
+}
+
 function IconPreferences() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -76,19 +86,40 @@ function IconClose() {
   );
 }
 
-export function AppLayout() {
+function IconChevronDown() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+interface AppLayoutProps {
+  children: React.ReactNode;
+}
+
+export function AppLayout({ children }: AppLayoutProps) {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
+  const { current: workspace, workspaces, fetchWorkspaces } = useWorkspaceStore();
   const location = useLocation();
   const navigate = useNavigate();
-  const storyMatch = useMatch('/story/:id');
+  const storyMatch = useMatch('/w/:workspaceSlug/story/:id');
   const storyId = storyMatch?.params?.id;
-  const pieceMatch = useMatch('/piece/:id');
+  const pieceMatch = useMatch('/w/:workspaceSlug/piece/:id');
   const pieceId = pieceMatch?.params?.id;
   const [unapprovedCount, setUnapprovedCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteRole, setInviteRole] = useState<'owner' | 'admin' | 'editor' | 'viewer'>('editor');
 
-  const fromPath = (location.state as { from?: string })?.from ?? '/board';
+  const basePath = workspaceSlug ? `/w/${workspaceSlug}` : '';
+  const fromPath = (location.state as { from?: string })?.from ?? `${basePath}/board`;
 
   const closeStoryModal = () => {
     navigate(fromPath, { replace: true });
@@ -97,6 +128,10 @@ export function AppLayout() {
   const closePieceModal = () => {
     navigate(fromPath, { replace: true });
   };
+
+  useEffect(() => {
+    fetchWorkspaces();
+  }, [fetchWorkspaces]);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,18 +148,45 @@ export function AppLayout() {
     };
   }, [location.pathname]);
 
-  const isBoard = location.pathname === '/board' && !storyId && !pieceId;
-  const isStories = location.pathname === '/stories' && !storyId && !pieceId;
-  const isIdeas = location.pathname === '/ideas' && !storyId && !pieceId;
-  const isPreferences = location.pathname === '/preferences';
+  const isBoard = location.pathname === `${basePath}/board` && !storyId && !pieceId;
+  const isStories = location.pathname === `${basePath}/stories` && !storyId && !pieceId;
+  const isIdeas = location.pathname === `${basePath}/ideas` && !storyId && !pieceId;
+  const isPreferences = location.pathname === `${basePath}/preferences`;
 
-  // Render Board/Stories/Ideas when on that route OR when the story/piece modal was opened from that page
-  // (keeps the same component instance when closing the modal). Use Outlet only for other routes.
-  const showBoard = location.pathname === '/board' || ((storyId || pieceId) && fromPath === '/board');
-  const showStories = location.pathname === '/stories' || ((storyId || pieceId) && fromPath === '/stories');
-  const showIdeasPage = location.pathname === '/ideas' || ((storyId || pieceId) && fromPath === '/ideas');
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
+    setWorkspaceSwitcherOpen(false);
+  };
 
-  const closeMobileMenu = () => setMobileMenuOpen(false);
+  const canInvite = workspace?.role === 'owner' || workspace?.role === 'admin';
+
+  const handleGenerateInvite = async () => {
+    if (!workspace?._id) return;
+    setInviteLoading(true);
+    setInviteError(null);
+    setInviteLink(null);
+    try {
+      const res = await workspacesApi.createInvite(workspace._id, inviteRole);
+      setInviteLink(res.inviteLink);
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : 'Failed to create invite');
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleCopyInvite = () => {
+    if (inviteLink) {
+      navigator.clipboard.writeText(inviteLink);
+    }
+  };
+
+  const closeInviteModal = () => {
+    setInviteModalOpen(false);
+    setInviteLink(null);
+    setInviteError(null);
+    setInviteRole('editor');
+  };
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--app-bg)' }}>
@@ -140,52 +202,115 @@ export function AppLayout() {
         className={`app-sidebar ${mobileMenuOpen ? 'app-sidebar-mobile-open' : ''}`}
         aria-hidden={!mobileMenuOpen}
       >
+        <div className="relative mb-4 mx-3">
+          <button
+            type="button"
+            onClick={() => setWorkspaceSwitcherOpen((o) => !o)}
+            className="flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm font-medium hover:bg-black/5"
+            style={{ color: 'var(--app-text-primary)', border: '1px solid var(--border)' }}
+            aria-expanded={workspaceSwitcherOpen}
+            aria-haspopup="true"
+          >
+            <span className="truncate">{workspace?.name ?? 'Workspace'}</span>
+            <IconChevronDown />
+          </button>
+          {workspaceSwitcherOpen && (
+            <>
+              <div className="fixed inset-0 z-10" aria-hidden onClick={() => setWorkspaceSwitcherOpen(false)} />
+              <ul
+                className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 list-none overflow-auto rounded border p-1 shadow-lg"
+                style={{ background: 'var(--app-bg)', borderColor: 'var(--border)' }}
+                role="menu"
+              >
+                {workspaces.map((w) => (
+                  <li key={w._id} role="none">
+                    <Link
+                      to={`/w/${w.slug}/board`}
+                      role="menuitem"
+                      className="block truncate rounded px-3 py-2 text-sm hover:bg-black/5"
+                      style={{ color: 'var(--app-text-primary)' }}
+                      onClick={closeMobileMenu}
+                    >
+                      {w.name}
+                    </Link>
+                  </li>
+                ))}
+                <li role="none">
+                  <Link
+                    to="/w"
+                    role="menuitem"
+                    className="block rounded px-3 py-2 text-sm"
+                    style={{ color: 'var(--accent-primary)' }}
+                    onClick={closeMobileMenu}
+                  >
+                    Switch workspace…
+                  </Link>
+                </li>
+              </ul>
+            </>
+          )}
+        </div>
         <nav className="app-sidebar-nav">
-          <Link
-            to="/stories"
-            className={`app-sidebar-link ${isStories ? 'active' : ''}`}
-            onClick={closeMobileMenu}
-          >
-            <IconSeries />
-            <span className="app-sidebar-link-text">Stories</span>
-          </Link>
-          <Link
-            to="/board"
-            className={`app-sidebar-link ${isBoard ? 'active' : ''}`}
-            onClick={closeMobileMenu}
-          >
-            <IconBoard />
-            <span className="app-sidebar-link-text">Pieces</span>
-          </Link>
-          <Link
-            to="/ideas"
-            className={`app-sidebar-link ${isIdeas ? 'active' : ''}`}
-            onClick={closeMobileMenu}
-          >
-            <IconInbox />
-            <span className="app-sidebar-link-text">Agenda Tracking</span>
-            {unapprovedCount > 0 && (
-              <span className="nav-badge" aria-label={`${unapprovedCount} ideas awaiting review`}>
-                {unapprovedCount}
-              </span>
+          <div className="flex min-h-0 flex-1 flex-col gap-1">
+            <Link
+              to={`${basePath}/stories`}
+              className={`app-sidebar-link ${isStories ? 'active' : ''}`}
+              onClick={closeMobileMenu}
+            >
+              <IconSeries />
+              <span className="app-sidebar-link-text">Stories</span>
+            </Link>
+            <Link
+              to={`${basePath}/board`}
+              className={`app-sidebar-link ${isBoard ? 'active' : ''}`}
+              onClick={closeMobileMenu}
+            >
+              <IconBoard />
+              <span className="app-sidebar-link-text">Pieces</span>
+            </Link>
+            <Link
+              to={`${basePath}/ideas`}
+              className={`app-sidebar-link ${isIdeas ? 'active' : ''}`}
+              onClick={closeMobileMenu}
+            >
+              <IconInbox />
+              <span className="app-sidebar-link-text">Agenda Tracking</span>
+              {unapprovedCount > 0 && (
+                <span className="nav-badge" aria-label={`${unapprovedCount} ideas awaiting review`}>
+                  {unapprovedCount}
+                </span>
+              )}
+            </Link>
+            {canInvite && (
+              <button
+                type="button"
+                className="app-sidebar-link"
+                style={{ width: '100%', border: 0, background: 'none', cursor: 'pointer', textAlign: 'left' }}
+                onClick={() => { setInviteModalOpen(true); closeMobileMenu(); }}
+              >
+                <IconInvite />
+                <span className="app-sidebar-link-text">Invite people</span>
+              </button>
             )}
-          </Link>
-          <Link
-            to="/archive"
-            className={`app-sidebar-link ${location.pathname === '/archive' ? 'active' : ''}`}
-            onClick={closeMobileMenu}
-          >
-            <IconArchive />
-            <span className="app-sidebar-link-text">Archive</span>
-          </Link>
-          <Link
-            to="/preferences"
-            className={`app-sidebar-link ${isPreferences ? 'active' : ''}`}
-            onClick={closeMobileMenu}
-          >
-            <IconPreferences />
-            <span className="app-sidebar-link-text">Preferences</span>
-          </Link>
+          </div>
+          <div className="mt-auto flex flex-col gap-1">
+            <Link
+              to={`${basePath}/archive`}
+              className={`app-sidebar-link ${location.pathname === `${basePath}/archive` ? 'active' : ''}`}
+              onClick={closeMobileMenu}
+            >
+              <IconArchive />
+              <span className="app-sidebar-link-text">Archive</span>
+            </Link>
+            <Link
+              to={`${basePath}/preferences`}
+              className={`app-sidebar-link ${isPreferences ? 'active' : ''}`}
+              onClick={closeMobileMenu}
+            >
+              <IconPreferences />
+              <span className="app-sidebar-link-text">Preferences</span>
+            </Link>
+          </div>
         </nav>
 
         <div className="app-sidebar-footer">
@@ -196,13 +321,98 @@ export function AppLayout() {
           </span>
           <button
             type="button"
-            onClick={() => { closeMobileMenu(); logout(); }}
+            onClick={() => {
+              closeMobileMenu();
+              useWorkspaceStore.getState().clear();
+              logout();
+            }}
             className="app-sidebar-link app-sidebar-signout"
           >
             Sign out
           </button>
         </div>
       </aside>
+
+      {inviteModalOpen && (
+        <>
+          <div className="fixed inset-0 z-[1200] bg-black/40" aria-hidden onClick={closeInviteModal} />
+          <div
+            className="fixed left-1/2 top-1/2 z-[1201] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border p-6 shadow-lg"
+            style={{ background: 'var(--app-bg)', borderColor: 'var(--border)' }}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="invite-modal-title"
+          >
+            <h2 id="invite-modal-title" className="mb-4 text-lg font-semibold" style={{ color: 'var(--app-text-primary)' }}>
+              Invite people to this workspace
+            </h2>
+            {inviteError && (
+              <p className="mb-3 text-sm" style={{ color: 'var(--accent-danger)' }}>{inviteError}</p>
+            )}
+            {!inviteLink ? (
+              <>
+                {(workspace?.role === 'owner' || workspace?.role === 'admin') && (
+                  <div className="mb-4">
+                    <label htmlFor="invite-role" className="mb-2 block text-sm font-medium" style={{ color: 'var(--app-text-secondary)' }}>
+                      Role for new member
+                    </label>
+                    <select
+                      id="invite-role"
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as 'owner' | 'admin' | 'editor' | 'viewer')}
+                      className="w-full rounded border px-3 py-2 text-sm"
+                      style={{ borderColor: 'var(--border)', color: 'var(--app-text-primary)', background: 'var(--app-bg)' }}
+                    >
+                      {workspace?.role === 'owner' && <option value="owner">Owner</option>}
+                      <option value="admin">Admin</option>
+                      <option value="editor">Editor</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
+                  </div>
+                )}
+                <button
+                type="button"
+                disabled={inviteLoading}
+                className="rounded px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                style={{ background: 'var(--accent-primary)' }}
+                onClick={handleGenerateInvite}
+              >
+                {inviteLoading ? 'Generating…' : 'Generate invite link'}
+              </button>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs" style={{ color: 'var(--medium-gray)' }}>Share this link. It expires in 7 days.</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={inviteLink}
+                    className="flex-1 rounded border px-3 py-2 text-sm"
+                    style={{ borderColor: 'var(--border)' }}
+                  />
+                  <button
+                    type="button"
+                    className="rounded border px-3 py-2 text-sm font-medium"
+                    style={{ borderColor: 'var(--border)', color: 'var(--app-text-primary)' }}
+                    onClick={handleCopyInvite}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+            )}
+            <button
+              type="button"
+              className="mt-4 text-sm font-medium"
+              style={{ color: 'var(--accent-primary)' }}
+              onClick={closeInviteModal}
+            >
+              Close
+            </button>
+          </div>
+        </>
+      )}
 
       <button
         type="button"
@@ -215,15 +425,7 @@ export function AppLayout() {
       </button>
 
       <main className="app-main">
-        {showBoard ? (
-          <Board />
-        ) : showStories ? (
-          <Stories />
-        ) : showIdeasPage ? (
-          <IdeasInbox />
-        ) : (
-          <Outlet />
-        )}
+        {children}
       </main>
       {storyId && (
         <StoryDetailModal

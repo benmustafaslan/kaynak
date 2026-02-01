@@ -24,7 +24,11 @@ function escapeHtml(s) {
 /** Export story as HTML (comments/fact-checks excluded). Word can open .html. */
 export const exportHtml = async (req, res, next) => {
   try {
-    const story = await Story.findOne({ _id: req.params.storyId, deletedAt: null });
+    const storyQuery = { _id: req.params.storyId, deletedAt: null };
+    if (req.workspaceId) {
+      storyQuery.workspaceId = req.workspaceId;
+    }
+    const story = await Story.findOne(storyQuery);
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
     }
@@ -71,7 +75,11 @@ export const exportDocx = async (req, res, next) => {
     }
 
     const { Document, Packer, Paragraph, TextRun, HeadingLevel } = docx;
-    const story = await Story.findOne({ _id: req.params.storyId, deletedAt: null });
+    const storyQuery = { _id: req.params.storyId, deletedAt: null };
+    if (req.workspaceId) {
+      storyQuery.workspaceId = req.workspaceId;
+    }
+    const story = await Story.findOne(storyQuery);
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
     }

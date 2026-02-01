@@ -13,7 +13,11 @@ export const getCurrent = async (req, res, next) => {
     if (!isValidStoryId(req.params.storyId)) {
       return res.status(404).json({ error: 'Story not found' });
     }
-    const story = await Story.findOne({ _id: req.params.storyId, deletedAt: null });
+    const storyQuery = { _id: req.params.storyId, deletedAt: null };
+    if (req.workspaceId) {
+      storyQuery.workspaceId = req.workspaceId;
+    }
+    const story = await Story.findOne(storyQuery);
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
     }
@@ -45,7 +49,11 @@ export const saveDraft = async (req, res, next) => {
     }
     const userId = req.user._id;
     const { content } = req.body;
-    const story = await Story.findOne({ _id: req.params.storyId, deletedAt: null });
+    const storyQuery = { _id: req.params.storyId, deletedAt: null };
+    if (req.workspaceId) {
+      storyQuery.workspaceId = req.workspaceId;
+    }
+    const story = await Story.findOne(storyQuery);
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
     }

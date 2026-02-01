@@ -6,6 +6,7 @@ const CONTENT_FORMATS = ['youtube', 'instagram_reels', 'tiktok', 'article', 'oth
 
 const pieceSchema = new mongoose.Schema(
   {
+    workspaceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workspace', default: null },
     linkedStoryIds: {
       type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Story' }],
       default: [],
@@ -39,6 +40,7 @@ const pieceSchema = new mongoose.Schema(
 pieceSchema.index({ linkedStoryIds: 1 });
 pieceSchema.index({ linkedStoryIds: 1, format: 1 });
 pieceSchema.index({ state: 1 });
+pieceSchema.index({ workspaceId: 1 });
 
 // Use 'outputs' collection for backward compatibility with existing data
 const Piece = mongoose.model('Piece', pieceSchema, 'outputs');

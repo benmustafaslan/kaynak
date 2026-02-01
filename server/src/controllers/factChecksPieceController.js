@@ -5,8 +5,20 @@ import Piece from '../models/Piece.js';
 const TYPES = ['claim', 'question', 'source_needed'];
 const STATUSES = ['pending', 'verified', 'disputed'];
 
+function pieceQueryForWorkspace(pieceId, workspaceId) {
+  const q = { _id: pieceId };
+  if (workspaceId) {
+    q.workspaceId = workspaceId;
+  }
+  return q;
+}
+
 export const list = async (req, res, next) => {
   try {
+    const piece = await Piece.findOne(pieceQueryForWorkspace(req.params.pieceId, req.workspaceId));
+    if (!piece) {
+      return res.status(404).json({ error: 'Piece not found' });
+    }
     const { scriptVersion } = req.query;
     const query = { outputId: req.params.pieceId };
     if (scriptVersion !== undefined && scriptVersion !== '') {
@@ -27,7 +39,7 @@ export const list = async (req, res, next) => {
 export const create = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const piece = await Piece.findById(req.params.pieceId);
+    const piece = await Piece.findOne(pieceQueryForWorkspace(req.params.pieceId, req.workspaceId));
     if (!piece) {
       return res.status(404).json({ error: 'Piece not found' });
     }
@@ -65,6 +77,10 @@ export const create = async (req, res, next) => {
 export const update = async (req, res, next) => {
   try {
     const userId = req.user._id;
+    const piece = await Piece.findOne(pieceQueryForWorkspace(req.params.pieceId, req.workspaceId));
+    if (!piece) {
+      return res.status(404).json({ error: 'Piece not found' });
+    }
     const factCheck = await FactCheck.findOne({
       _id: req.params.factCheckId,
       outputId: req.params.pieceId,
@@ -102,6 +118,10 @@ export const update = async (req, res, next) => {
 
 export const getComments = async (req, res, next) => {
   try {
+    const piece = await Piece.findOne(pieceQueryForWorkspace(req.params.pieceId, req.workspaceId));
+    if (!piece) {
+      return res.status(404).json({ error: 'Piece not found' });
+    }
     const factCheck = await FactCheck.findOne({
       _id: req.params.factCheckId,
       outputId: req.params.pieceId,
@@ -122,6 +142,10 @@ export const getComments = async (req, res, next) => {
 export const addComment = async (req, res, next) => {
   try {
     const userId = req.user._id;
+    const piece = await Piece.findOne(pieceQueryForWorkspace(req.params.pieceId, req.workspaceId));
+    if (!piece) {
+      return res.status(404).json({ error: 'Piece not found' });
+    }
     const factCheck = await FactCheck.findOne({
       _id: req.params.factCheckId,
       outputId: req.params.pieceId,

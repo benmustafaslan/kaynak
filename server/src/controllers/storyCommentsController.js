@@ -3,7 +3,11 @@ import Story from '../models/Story.js';
 
 export const list = async (req, res, next) => {
   try {
-    const story = await Story.findOne({ _id: req.params.storyId, deletedAt: null });
+    const storyQuery = { _id: req.params.storyId, deletedAt: null };
+    if (req.workspaceId) {
+      storyQuery.workspaceId = req.workspaceId;
+    }
+    const story = await Story.findOne(storyQuery);
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
     }
@@ -20,7 +24,11 @@ export const list = async (req, res, next) => {
 export const create = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const story = await Story.findOne({ _id: req.params.storyId, deletedAt: null });
+    const storyQuery = { _id: req.params.storyId, deletedAt: null };
+    if (req.workspaceId) {
+      storyQuery.workspaceId = req.workspaceId;
+    }
+    const story = await Story.findOne(storyQuery);
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
     }

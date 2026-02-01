@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BOARD_PIECE_STATES, BOARD_PIECE_STATE_LABELS } from '../../types/piece';
-import { getAvailablePieceTypes, getPieceTypeDisplayLabel } from '../../utils/pieceTypesPreferences';
+import { getAvailablePieceTypes, getPieceTypeDisplayLabel, getPieceTypeTemplate } from '../../utils/pieceTypesPreferences';
 import { ModalShell } from '../ModalShell';
 
 interface NewPieceModalProps {
@@ -13,10 +13,22 @@ const FORMAT_OPTIONS = () => {
   return list.length > 0 ? list : ['other'];
 };
 
+const applyTemplateHeadline = (fmt: string) => {
+  const t = getPieceTypeTemplate(fmt);
+  if (t?.headline != null && t.headline.trim() !== '') return t.headline.trim();
+  return '';
+};
+
 export function NewPieceModal({ onClose, onSubmit }: NewPieceModalProps) {
-  const [format, setFormat] = useState<string>(() => FORMAT_OPTIONS()[0]);
-  const [headline, setHeadline] = useState('');
+  const initialFormat = FORMAT_OPTIONS()[0];
+  const [format, setFormat] = useState<string>(initialFormat);
+  const [headline, setHeadline] = useState(() => applyTemplateHeadline(initialFormat));
   const [state, setState] = useState<string>('scripting');
+
+  const handleFormatChange = (newFormat: string) => {
+    setFormat(newFormat);
+    setHeadline(applyTemplateHeadline(newFormat));
+  };
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -52,7 +64,7 @@ export function NewPieceModal({ onClose, onSubmit }: NewPieceModalProps) {
               <label className="form-label">Format</label>
               <select
                 value={format}
-                onChange={(e) => setFormat(e.target.value)}
+                onChange={(e) => handleFormatChange(e.target.value)}
                 className="form-input"
               >
                 {FORMAT_OPTIONS().map((f) => (

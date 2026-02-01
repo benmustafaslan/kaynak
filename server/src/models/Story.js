@@ -33,6 +33,7 @@ const stateHistoryEntrySchema = new mongoose.Schema(
 
 const storySchema = new mongoose.Schema(
   {
+    workspaceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workspace', default: null },
     headline: { type: String, required: true, trim: true, maxlength: 500 },
     description: {
       type: String,
@@ -90,6 +91,7 @@ storySchema.index({ headline: 'text', description: 'text' });
 storySchema.index({ deadlines: 1 });
 storySchema.index({ categories: 1 });
 storySchema.index({ parentStoryId: 1, deletedAt: 1 });
+storySchema.index({ workspaceId: 1, deletedAt: 1 });
 
 const Story = mongoose.model('Story', storySchema);
 export default Story;

@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import type { Story, UserRef } from '../../types/story';
 
 function getDeadlineStatus(deadline?: string): 'overdue' | 'due-soon' | null {
@@ -42,6 +42,8 @@ export function StoryCard({
   variant = 'card',
 }: StoryCardProps) {
   const location = useLocation();
+  const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
+  const basePath = workspaceSlug ? `/w/${workspaceSlug}` : '';
   const nextDeadline = story.deadlines?.find((d) => !d.completed);
   const deadlineStatus = nextDeadline ? getDeadlineStatus(nextDeadline.date) : null;
   const producerName = getDisplayName(story.producer);
@@ -67,7 +69,7 @@ export function StoryCard({
         className={`story-card story-card-row ${isDragging ? 'dragging cursor-grabbing' : 'cursor-grab'}`}
       >
         <Link
-          to={`/story/${story._id}`}
+          to={`${basePath}/story/${story._id}`}
           state={{ from: location.pathname }}
           className="story-card-row-inner"
           onClick={(e) => e.stopPropagation()}
@@ -113,7 +115,7 @@ export function StoryCard({
       }}
       className={`story-card ${isDragging ? 'dragging cursor-grabbing' : 'cursor-grab'}`}
     >
-      <Link to={`/story/${story._id}`} state={{ from: location.pathname }} className="block" onClick={(e) => e.stopPropagation()}>
+      <Link to={`${basePath}/story/${story._id}`} state={{ from: location.pathname }} className="block" onClick={(e) => e.stopPropagation()}>
         {parentHeadline && (
           <div className="story-card-parent" title={`Series: ${parentHeadline}`}>
             {parentHeadline}

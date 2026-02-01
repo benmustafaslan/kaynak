@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import {
   BOARD_PIECE_STATES,
   BOARD_PIECE_STATE_LABELS,
@@ -35,6 +35,8 @@ export type KanbanBoardProps = {
 };
 
 export function KanbanBoard({ toolbarRight }: KanbanBoardProps = {}) {
+  const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
+  const basePath = workspaceSlug ? `/w/${workspaceSlug}` : '';
   const [pieces, setPieces] = useState<Piece[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -310,7 +312,7 @@ export function KanbanBoard({ toolbarRight }: KanbanBoardProps = {}) {
           >
             New piece
           </button>
-          <Link to="/stories" className="btn btn-ghost">
+          <Link to={`${basePath}/stories`} className="btn btn-ghost">
             Stories
           </Link>
         </div>

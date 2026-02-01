@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { storiesApi } from '../utils/storiesApi';
 import { piecesApi } from '../utils/piecesApi';
@@ -55,6 +55,9 @@ function activityDotClass(action: string): string {
 
 export default function IdeasInbox() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
+  const basePath = workspaceSlug ? `/w/${workspaceSlug}` : '';
   const user = useAuthStore((s) => s.user);
   const [ideas, setIdeas] = useState<Story[]>([]);
   const [total, setTotal] = useState(0);
@@ -184,16 +187,16 @@ export default function IdeasInbox() {
   }, []);
 
   useEffect(() => {
-    if (ideasView === 'ideas' && location.pathname === '/ideas') fetchPieceIdeas();
-  }, [ideasView, location.pathname, fetchPieceIdeas]);
+    if (ideasView === 'ideas' && location.pathname === `${basePath}/ideas`) fetchPieceIdeas();
+  }, [ideasView, location.pathname, basePath, fetchPieceIdeas]);
 
   const handleOpenStory = useCallback((idea: Story) => {
-    navigate(`/story/${idea._id}`, { state: { from: '/ideas' } });
-  }, [navigate]);
+    navigate(`${basePath}/story/${idea._id}`, { state: { from: `${basePath}/ideas` } });
+  }, [navigate, basePath]);
 
   const handleOpenPiece = useCallback((piece: Piece) => {
-    navigate(`/piece/${piece._id}`, { state: { from: '/ideas' } });
-  }, [navigate]);
+    navigate(`${basePath}/piece/${piece._id}`, { state: { from: `${basePath}/ideas` } });
+  }, [navigate, basePath]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();

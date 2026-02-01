@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import authRoutes from './auth.js';
+import workspacesRoutes from './workspaces.js';
+import invitesRoutes from './invites.js';
 import storiesRoutes from './stories.js';
 import usersRoutes from './users.js';
 import scriptVersionsRoutes from './scriptVersions.js';
@@ -12,14 +14,17 @@ import { getRecent } from '../controllers/activityLogController.js';
 import { getFeed } from '../controllers/feedController.js';
 import { exportDocx, exportHtml } from '../controllers/exportController.js';
 import { authenticate } from '../middleware/auth.js';
+import { requireWorkspace } from '../middleware/workspace.js';
 
 const router = Router();
 router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);
-router.get('/activity/recent', authenticate, getRecent);
+router.use('/workspaces', workspacesRoutes);
+router.use('/invites', invitesRoutes);
+router.get('/activity/recent', authenticate, requireWorkspace, getRecent);
 router.get('/feed', authenticate, getFeed);
 router.use('/pieces', piecesRoutes);
-router.get('/stories/:storyId/export', authenticate, (req, res, next) => {
+router.get('/stories/:storyId/export', authenticate, requireWorkspace, (req, res, next) => {
   if (req.query.format === 'docx') return exportDocx(req, res, next);
   if (req.query.format === 'html') return exportHtml(req, res, next);
   res.status(400).json({ error: 'Use ?format=docx or ?format=html' });

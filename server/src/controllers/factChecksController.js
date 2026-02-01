@@ -5,8 +5,20 @@ import Story from '../models/Story.js';
 const TYPES = ['claim', 'question', 'source_needed'];
 const STATUSES = ['pending', 'verified', 'disputed'];
 
+function storyQueryForWorkspace(storyId, workspaceId) {
+  const q = { _id: storyId, deletedAt: null };
+  if (workspaceId) {
+    q.workspaceId = workspaceId;
+  }
+  return q;
+}
+
 export const list = async (req, res, next) => {
   try {
+    const story = await Story.findOne(storyQueryForWorkspace(req.params.storyId, req.workspaceId));
+    if (!story) {
+      return res.status(404).json({ error: 'Story not found' });
+    }
     const { scriptVersion } = req.query;
     const query = { storyId: req.params.storyId };
     if (scriptVersion !== undefined && scriptVersion !== '') {
@@ -27,7 +39,7 @@ export const list = async (req, res, next) => {
 export const create = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const story = await Story.findOne({ _id: req.params.storyId, deletedAt: null });
+    const story = await Story.findOne(storyQueryForWorkspace(req.params.storyId, req.workspaceId));
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
     }
@@ -65,6 +77,10 @@ export const create = async (req, res, next) => {
 export const update = async (req, res, next) => {
   try {
     const userId = req.user._id;
+    const story = await Story.findOne(storyQueryForWorkspace(req.params.storyId, req.workspaceId));
+    if (!story) {
+      return res.status(404).json({ error: 'Story not found' });
+    }
     const factCheck = await FactCheck.findOne({
       _id: req.params.factCheckId,
       storyId: req.params.storyId,
@@ -102,6 +118,10 @@ export const update = async (req, res, next) => {
 
 export const getComments = async (req, res, next) => {
   try {
+    const story = await Story.findOne(storyQueryForWorkspace(req.params.storyId, req.workspaceId));
+    if (!story) {
+      return res.status(404).json({ error: 'Story not found' });
+    }
     const factCheck = await FactCheck.findOne({
       _id: req.params.factCheckId,
       storyId: req.params.storyId,
@@ -122,6 +142,10 @@ export const getComments = async (req, res, next) => {
 export const addComment = async (req, res, next) => {
   try {
     const userId = req.user._id;
+    const story = await Story.findOne(storyQueryForWorkspace(req.params.storyId, req.workspaceId));
+    if (!story) {
+      return res.status(404).json({ error: 'Story not found' });
+    }
     const factCheck = await FactCheck.findOne({
       _id: req.params.factCheckId,
       storyId: req.params.storyId,

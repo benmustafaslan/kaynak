@@ -24,6 +24,9 @@ export const list = async (req, res, next) => {
     const { myStories, overdue, category, search, page = 1, limit = 50, approved, state, stateNe, sort, rejected } = req.query;
 
     const query = { deletedAt: null };
+    if (req.workspaceId) {
+      query.workspaceId = req.workspaceId;
+    }
 
     // Parents (story packages) are only returned when explicitly requested; they are shown in a separate area, not as board cards
     if (req.query.kind === 'parent') {
@@ -127,7 +130,11 @@ export const list = async (req, res, next) => {
 
 export const getById = async (req, res, next) => {
   try {
-    const story = await Story.findOne({ _id: req.params.id, deletedAt: null })
+    const storyQuery = { _id: req.params.id, deletedAt: null };
+    if (req.workspaceId) {
+      storyQuery.workspaceId = req.workspaceId;
+    }
+    const story = await Story.findOne(storyQuery)
       .populate('producer', 'name email')
       .populate('editors', 'name email')
       .populate('createdBy', 'name email')
@@ -151,17 +158,22 @@ export const getById = async (req, res, next) => {
 export const getRelated = async (req, res, next) => {
   try {
     const storyId = req.params.id;
-    const story = await Story.findOne({ _id: storyId, deletedAt: null }).lean();
+    const storyQuery = { _id: storyId, deletedAt: null };
+    if (req.workspaceId) {
+      storyQuery.workspaceId = req.workspaceId;
+    }
+    const story = await Story.findOne(storyQuery).lean();
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
     }
 
     // Parent (series): return this story as parentStory and its children as relatedStories
     if (story.kind === 'parent') {
-      const children = await Story.find({
-        parentStoryId: storyId,
-        deletedAt: null,
-      })
+      const childrenQuery = { parentStoryId: storyId, deletedAt: null };
+    if (req.workspaceId) {
+      childrenQuery.workspaceId = req.workspaceId;
+    }
+    const children = await Story.find(childrenQuery)
         .populate('producer', 'name email')
         .populate('editors', 'name email')
         .sort({ createdAt: 1 })
@@ -187,17 +199,19 @@ export const getRelated = async (req, res, next) => {
       return res.json({ parentStory: null, relatedStories: [] });
     }
 
-    const parentStory = await Story.findOne({
-      _id: story.parentStoryId,
-      deletedAt: null,
-    })
+    const parentQuery = { _id: story.parentStoryId, deletedAt: null };
+    if (req.workspaceId) {
+      parentQuery.workspaceId = req.workspaceId;
+    }
+    const parentStory = await Story.findOne(parentQuery)
       .populate('createdBy', 'name email')
       .lean();
 
-    const siblings = await Story.find({
-      parentStoryId: story.parentStoryId,
-      deletedAt: null,
-    })
+    const siblingsQuery = { parentStoryId: story.parentStoryId, deletedAt: null };
+    if (req.workspaceId) {
+      siblingsQuery.workspaceId = req.workspaceId;
+    }
+    const siblings = await Story.find(siblingsQuery)
       .populate('producer', 'name email')
       .populate('editors', 'name email')
       .sort({ createdAt: 1 })
@@ -255,7 +269,11 @@ export const create = async (req, res, next) => {
 
     let parentStoryId = null;
     if (!isParent && requestedParentId && String(requestedParentId).trim()) {
-      const parent = await Story.findOne({ _id: requestedParentId.trim(), deletedAt: null });
+      const parentQuery = { _id: requestedParentId.trim(), deletedAt: null };
+      if (req.workspaceId) {
+        parentQuery.workspaceId = req.workspaceId;
+      }
+      const parent = await Story.findOne(parentQuery);
       if (!parent) {
         return res.status(400).json({ error: 'Parent story not found' });
       }
@@ -266,6 +284,7 @@ export const create = async (req, res, next) => {
     }
 
     const story = await Story.create({
+      workspaceId: req.workspaceId || undefined,
       headline: headline.trim().slice(0, 500),
       description: descriptionValue,
       state: initialState,
@@ -309,7 +328,11 @@ export const create = async (req, res, next) => {
 export const update = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const story = await Story.findOne({ _id: req.params.id, deletedAt: null });
+    const storyQuery = { _id: req.params.id, deletedAt: null };
+    if (req.workspaceId) {
+      storyQuery.workspaceId = req.workspaceId;
+    }
+    const story = await Story.findOne(storyQuery);
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
     }
@@ -477,7 +500,11 @@ export const update = async (req, res, next) => {
     if (parentStoryId !== undefined) {
       const newParentId = parentStoryId ? String(parentStoryId).trim() || null : null;
       if (newParentId) {
-        const parent = await Story.findOne({ _id: newParentId, deletedAt: null });
+        const parentQuery = { _id: newParentId, deletedAt: null };
+        if (req.workspaceId) {
+          parentQuery.workspaceId = req.workspaceId;
+        }
+        const parent = await Story.findOne(parentQuery);
         if (!parent) {
           return res.status(400).json({ error: 'Parent story not found' });
         }
@@ -494,7 +521,11 @@ export const update = async (req, res, next) => {
         const oldParentId = story.parentStoryId;
         story.parentStoryId = null;
         if (oldParentId) {
-          const oldParent = await Story.findOne({ _id: oldParentId, deletedAt: null });
+          const oldParentQuery = { _id: oldParentId, deletedAt: null };
+        if (req.workspaceId) {
+          oldParentQuery.workspaceId = req.workspaceId;
+        }
+        const oldParent = await Story.findOne(oldParentQuery);
           if (oldParent?.childOrder?.length) {
             oldParent.childOrder = oldParent.childOrder.filter(
               (id) => id.toString() !== story._id.toString()
@@ -527,7 +558,11 @@ export const update = async (req, res, next) => {
 export const remove = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const story = await Story.findOne({ _id: req.params.id, deletedAt: null });
+    const storyQuery = { _id: req.params.id, deletedAt: null };
+    if (req.workspaceId) {
+      storyQuery.workspaceId = req.workspaceId;
+    }
+    const story = await Story.findOne(storyQuery);
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
     }

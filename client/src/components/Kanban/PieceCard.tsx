@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import type { Piece, LinkedStoryRef } from '../../types/piece';
 import { getPieceTypeDisplayLabel } from '../../utils/pieceTypesPreferences';
 
@@ -31,6 +31,8 @@ interface PieceCardProps {
 }
 
 export function PieceCard({ piece, isDragging, onDragStart, variant: _variant = 'row' }: PieceCardProps) {
+  const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
+  const basePath = workspaceSlug ? `/w/${workspaceSlug}` : '';
   const firstHeadline = getFirstLinkedStoryHeadline(piece);
   const stateLower = (piece.state || 'scripting').toLowerCase();
 
@@ -46,8 +48,8 @@ export function PieceCard({ piece, isDragging, onDragStart, variant: _variant = 
       className={`story-card story-card-row ${isDragging ? 'dragging cursor-grabbing' : 'cursor-grab'}`}
     >
       <Link
-        to={`/piece/${piece._id}`}
-        state={{ from: '/board' }}
+        to={`${basePath}/piece/${piece._id}`}
+        state={{ from: `${basePath}/board` }}
         className="story-card-row-inner"
         onClick={(e) => e.stopPropagation()}
       >

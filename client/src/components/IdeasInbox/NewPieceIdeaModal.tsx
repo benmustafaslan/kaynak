@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { piecesApi } from '../../utils/piecesApi';
-import { getAvailablePieceTypes, getPieceTypeDisplayLabel } from '../../utils/pieceTypesPreferences';
+import { getAvailablePieceTypes, getPieceTypeDisplayLabel, getPieceTypeTemplate } from '../../utils/pieceTypesPreferences';
 import { ModalShell } from '../ModalShell';
 
 interface NewPieceIdeaModalProps {
@@ -8,11 +8,23 @@ interface NewPieceIdeaModalProps {
   onCreated: () => void;
 }
 
+function applyTemplateHeadline(fmt: string): string {
+  const t = getPieceTypeTemplate(fmt);
+  if (t?.headline != null && t.headline.trim() !== '') return t.headline.trim();
+  return '';
+}
+
 export function NewPieceIdeaModal({ onClose, onCreated }: NewPieceIdeaModalProps) {
-  const [headline, setHeadline] = useState('');
-  const [format, setFormat] = useState<string>(() => getAvailablePieceTypes()[0] ?? 'other');
+  const initialFormat = getAvailablePieceTypes()[0] ?? 'other';
+  const [headline, setHeadline] = useState(() => applyTemplateHeadline(initialFormat));
+  const [format, setFormat] = useState<string>(initialFormat);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  const handleFormatChange = (newFormat: string) => {
+    setFormat(newFormat);
+    setHeadline(applyTemplateHeadline(newFormat));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,7 +79,7 @@ export function NewPieceIdeaModal({ onClose, onCreated }: NewPieceIdeaModalProps
                 <select
                   id="piece-idea-format"
                   value={format}
-                  onChange={(e) => setFormat(e.target.value)}
+                  onChange={(e) => handleFormatChange(e.target.value)}
                   className="w-full rounded border border-app-border bg-app-bg-primary px-3 py-2 text-sm text-app-text-primary focus:border-app-accent focus:outline-none focus:ring-1 focus:ring-app-accent"
                 >
                   {getAvailablePieceTypes().map((t) => (

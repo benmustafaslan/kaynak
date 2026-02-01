@@ -4,7 +4,19 @@ import Story from '../models/Story.js';
 export const getRecent = async (req, res, next) => {
   try {
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
-    const logs = await ActivityLog.find({})
+    let storyIds = null;
+    if (req.workspaceId) {
+      const stories = await Story.find({
+        workspaceId: req.workspaceId,
+        deletedAt: null,
+      }, { _id: 1 }).lean();
+      storyIds = stories.map((s) => s._id);
+      if (storyIds.length === 0) {
+        return res.json({ activity: [] });
+      }
+    }
+    const logQuery = storyIds ? { storyId: { $in: storyIds } } : {};
+    const logs = await ActivityLog.find(logQuery)
       .populate('userId', 'name email')
       .populate('storyId', 'headline state deletedAt')
       .sort({ createdAt: -1 })
@@ -21,7 +33,11 @@ export const getRecent = async (req, res, next) => {
 
 export const getByStoryId = async (req, res, next) => {
   try {
-    const story = await Story.findOne({ _id: req.params.storyId, deletedAt: null });
+    const storyQuery = { _id: req.params.storyId, deletedAt: null };
+    if (req.workspaceId) {
+      storyQuery.workspaceId = req.workspaceId;
+    }
+    const story = await Story.findOne(storyQuery);
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
     }

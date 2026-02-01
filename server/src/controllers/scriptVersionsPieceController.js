@@ -8,12 +8,20 @@ function isValidPieceId(id) {
   return id && String(id).trim() !== '' && mongoose.Types.ObjectId.isValid(id);
 }
 
+function pieceQueryForWorkspace(pieceId, workspaceId) {
+  const q = { _id: pieceId };
+  if (workspaceId) {
+    q.workspaceId = workspaceId;
+  }
+  return q;
+}
+
 export const getCurrent = async (req, res, next) => {
   try {
     if (!isValidPieceId(req.params.pieceId)) {
       return res.status(404).json({ error: 'Piece not found' });
     }
-    const piece = await Piece.findById(req.params.pieceId);
+    const piece = await Piece.findOne(pieceQueryForWorkspace(req.params.pieceId, req.workspaceId));
     if (!piece) {
       return res.status(404).json({ error: 'Piece not found' });
     }
@@ -44,7 +52,7 @@ export const saveDraft = async (req, res, next) => {
     }
     const userId = req.user._id;
     const { content } = req.body;
-    const piece = await Piece.findById(req.params.pieceId);
+    const piece = await Piece.findOne(pieceQueryForWorkspace(req.params.pieceId, req.workspaceId));
     if (!piece) {
       return res.status(404).json({ error: 'Piece not found' });
     }

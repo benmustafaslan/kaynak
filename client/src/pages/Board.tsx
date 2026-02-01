@@ -1,9 +1,11 @@
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { KanbanBoard } from '../components/Kanban';
 
 export default function Board() {
+  const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
+  const basePath = workspaceSlug ? `/w/${workspaceSlug}` : '';
   const toolbarRight = (
-    <Link to="/stories" className="btn btn-primary">
+    <Link to={`${basePath}/stories`} className="btn btn-primary">
       Stories
     </Link>
   );

@@ -17,6 +17,15 @@ function decodeScriptContent(html: string): string {
   return div.innerHTML;
 }
 
+/** If template looks like plain text (no tags), wrap each line in <p> and escape; otherwise use as HTML. */
+function normalizeTemplateContent(text: string): string {
+  const t = text.trim();
+  if (!t) return '';
+  if (t.includes('<')) return t;
+  const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return t.split(/\n/).map((line) => `<p>${escape(line)}</p>`).join('');
+}
+
 export interface ScriptEditorHandle {
   saveDraft: () => Promise<void>;
 }
@@ -26,13 +35,15 @@ interface ScriptEditorProps {
   /** When set, edits the script for this piece (e.g. Reels) instead of the story's main script. */
   pieceId?: string;
   currentUserId: string;
+  /** When the server returns empty content (no script version yet), use this as initial content (e.g. from piece type template). */
+  initialContentWhenEmpty?: string;
   onAddFactCheck?: (selection: { start: number; end: number; text: string }) => void;
   onDirty?: () => void;
   readOnly?: boolean;
 }
 
 export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(function ScriptEditor(
-  { storyId, pieceId, currentUserId: _currentUserId, onAddFactCheck, onDirty, readOnly },
+  { storyId, pieceId, currentUserId: _currentUserId, initialContentWhenEmpty, onAddFactCheck, onDirty, readOnly },
   ref
 ) {
   const [content, setContent] = useState('');
@@ -55,13 +66,18 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(fu
     try {
       const res = await scriptVersionsApi.getCurrent(storyId, pieceId);
       const raw = res.content ?? '';
-      setContent(raw.includes('&lt;') || raw.includes('&amp;') ? decodeScriptContent(raw) : raw);
+      const decoded = raw.includes('&lt;') || raw.includes('&amp;') ? decodeScriptContent(raw) : raw;
+      const final =
+        decoded.trim() === '' && initialContentWhenEmpty?.trim()
+          ? normalizeTemplateContent(initialContentWhenEmpty)
+          : decoded;
+      setContent(final);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load script');
     } finally {
       setLoading(false);
     }
-  }, [storyId, pieceId, hasValidContext]);
+  }, [storyId, pieceId, hasValidContext, initialContentWhenEmpty]);
 
   useEffect(() => {
     fetchCurrent();

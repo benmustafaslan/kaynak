@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import type { Story } from '../types/story';
 import { storiesApi } from '../utils/storiesApi';
 import { SeriesSearchBar } from '../components/Kanban/SeriesSearchBar';
@@ -7,6 +7,8 @@ import { NewStoryModal } from '../components/Kanban/NewStoryModal';
 
 export default function Stories() {
   const location = useLocation();
+  const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
+  const basePath = workspaceSlug ? `/w/${workspaceSlug}` : '';
   const prevPathRef = useRef<string>(location.pathname);
   const [series, setSeries] = useState<Story[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
@@ -62,7 +64,7 @@ export default function Stories() {
     const pathname = location.pathname;
     const prev = prevPathRef.current;
     prevPathRef.current = pathname;
-    if (pathname === '/stories' && prev?.startsWith('/story/')) {
+    if (pathname === `${basePath}/stories` && prev?.startsWith(`${basePath}/story/`)) {
       fetchStories();
     }
   }, [location.pathname, fetchStories]);
@@ -196,8 +198,8 @@ export default function Stories() {
               return (
                 <li key={s._id} className="stories-list-item">
                   <Link
-                    to={`/story/${s._id}`}
-                    state={{ from: '/stories' }}
+                    to={`${basePath}/story/${s._id}`}
+                    state={{ from: `${basePath}/stories` }}
                     className="stories-list-link"
                   >
                     <span className="stories-list-headline">{s.headline}</span>

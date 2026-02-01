@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import type { Story } from '../../types/story';
 import { storiesApi } from '../../utils/storiesApi';
 import { LongTextField } from '../LongTextField';
@@ -18,6 +18,9 @@ interface PackageCardProps {
 }
 
 export function PackageCard({ pkg, onUpdated, onDeleted, onStoryAdded, onReject, onPark, onApprove, canApprove }: PackageCardProps) {
+  const location = useLocation();
+  const { workspaceSlug } = useParams<{ workspaceSlug?: string }>();
+  const basePath = workspaceSlug ? `/w/${workspaceSlug}` : '';
   const [mode, setMode] = useState<'display' | 'edit' | 'expanded'>('display');
   const [editHeadline, setEditHeadline] = useState(pkg.headline);
   const [editDescription, setEditDescription] = useState(pkg.description ?? '');
@@ -243,7 +246,7 @@ export function PackageCard({ pkg, onUpdated, onDeleted, onStoryAdded, onReject,
             <ul className="package-card-children-list">
               {children.map((s) => (
                 <li key={s._id} className="package-card-child">
-                  <Link to={`/story/${s._id}`} state={{ from: location.pathname }} className="package-card-child-link">
+                  <Link to={`${basePath}/story/${s._id}`} state={{ from: location.pathname }} className="package-card-child-link">
                     <span className="package-card-child-bullet">•</span>
                     <span className="package-card-child-headline">{s.headline}</span>
                   </Link>

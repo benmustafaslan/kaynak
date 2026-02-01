@@ -3,12 +3,15 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import WorkspacePicker from './pages/WorkspacePicker';
+import CreateWorkspace from './pages/CreateWorkspace';
+import JoinByInvite from './pages/JoinByInvite';
 import Board from './pages/Board';
 import Stories from './pages/Stories';
 import IdeasInbox from './pages/IdeasInbox';
 import Archive from './pages/Archive';
 import Preferences from './pages/Preferences';
-import { AppLayout } from './components/AppLayout';
+import { WorkspaceLayout } from './components/WorkspaceLayout';
 
 const LoadingScreen = () => (
   <div
@@ -58,18 +61,29 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route
-          path="/"
+          path="/w"
           element={
             checked ? (
-              user ? <AppLayout /> : <Navigate to="/login" replace />
+              user ? <WorkspacePicker /> : <Navigate to="/login" replace />
+            ) : (
+              <LoadingScreen />
+            )
+          }
+        />
+        <Route path="/w/create" element={checked ? (user ? <CreateWorkspace /> : <Navigate to="/login" replace />) : <LoadingScreen />} />
+        <Route path="/w/join" element={checked ? <JoinByInvite /> : <LoadingScreen />} />
+        <Route
+          path="/w/:workspaceSlug"
+          element={
+            checked ? (
+              user ? <WorkspaceLayout /> : <Navigate to="/login" replace />
             ) : (
               <LoadingScreen />
             )
           }
         >
-          <Route index element={<Navigate to="/board" replace />} />
+          <Route index element={<Navigate to="board" replace />} />
           <Route path="board" element={<Board />} />
-          <Route path="series" element={<Navigate to="/stories" replace />} />
           <Route path="stories" element={<Stories />} />
           <Route path="ideas" element={<IdeasInbox />} />
           <Route path="archive" element={<Archive />} />
@@ -77,7 +91,8 @@ function App() {
           <Route path="story/:id" element={null} />
           <Route path="piece/:id" element={null} />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/" element={<Navigate to="/w" replace />} />
+        <Route path="*" element={<Navigate to="/w" replace />} />
       </Routes>
     </BrowserRouter>
   );

@@ -6,6 +6,18 @@ const API_BASE =
 const AUTH_TOKEN_KEY = 'auth_token';
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
 
+let currentWorkspaceId: string | null = null;
+
+/** Set current workspace id so API requests include X-Workspace-Id. */
+export function setWorkspaceId(id: string | null): void {
+  currentWorkspaceId = id;
+}
+
+/** Get current workspace id (used by api when sending requests). */
+export function getWorkspaceId(): string | null {
+  return currentWorkspaceId;
+}
+
 /** Get token from localStorage, or from cookie if localStorage is empty (e.g. after refresh in some cases). */
 export function getStoredToken(): string | null {
   const fromStorage = localStorage.getItem(AUTH_TOKEN_KEY);
@@ -44,6 +56,9 @@ async function request<T>(
   const token = getStoredToken();
   if (token) {
     (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+  }
+  if (currentWorkspaceId) {
+    (headers as Record<string, string>)['X-Workspace-Id'] = currentWorkspaceId;
   }
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
