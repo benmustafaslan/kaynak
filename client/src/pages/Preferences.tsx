@@ -199,7 +199,7 @@ export default function Preferences() {
 
   if (lastSavedRef.current === null) {
     lastSavedRef.current = JSON.stringify({
-      roles: snapshot(effectiveRemovedRoleTypes, customRoleTypes),
+      roles: snapshot(effectiveRemovedRoleTypes, customRoleTypes, {}),
       pieceTypes: snapshot(effectiveRemovedPieceTypes, customPieceTypes, pieceTypeTemplates),
     });
   }
@@ -213,7 +213,7 @@ export default function Preferences() {
   const availablePieceTypes = allPieceTypes.filter((t) => !effectiveRemovedPieceTypes.includes(t));
 
   const currentSnapshot = JSON.stringify({
-    roles: snapshot(effectiveRemovedRoleTypes, customRoleTypes),
+    roles: snapshot(effectiveRemovedRoleTypes, customRoleTypes, {}),
     pieceTypes: snapshot(effectiveRemovedPieceTypes, customPieceTypes, pieceTypeTemplates),
   });
   const isDirty = currentSnapshot !== lastSavedRef.current;
@@ -237,7 +237,7 @@ export default function Preferences() {
     setCustomPieceTypes(loadCustomPieceTypes());
     setPieceTypeTemplates(loadPieceTypeTemplates());
     lastSavedRef.current = JSON.stringify({
-      roles: snapshot(loadRemovedRoleTypes(), loadCustomRoleTypes()),
+      roles: snapshot(loadRemovedRoleTypes(), loadCustomRoleTypes(), {}),
       pieceTypes: snapshot(loadRemovedPieceTypes(), loadCustomPieceTypes(), loadPieceTypeTemplates()),
     });
   }, []);
@@ -313,18 +313,6 @@ export default function Preferences() {
       return next;
     });
     setSaveVersion((v) => v + 1);
-  }, []);
-
-  const updatePieceTypeTemplate = useCallback((typeId: string, updates: Partial<PieceTypeTemplate>) => {
-    setPieceTypeTemplates((prev) => {
-      const current = prev[typeId] ?? {};
-      const next = { ...current, ...updates };
-      const isEmpty = (next.headline ?? '').trim() === '' && (next.script ?? '').trim() === '';
-      const nextAll = { ...prev };
-      if (isEmpty) delete nextAll[typeId];
-      else nextAll[typeId] = next;
-      return nextAll;
-    });
   }, []);
 
   const applyPieceTypeTemplateAndCloseModal = useCallback((headline: string, script: string) => {
