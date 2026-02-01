@@ -1,7 +1,7 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
 import type { Story, UserRef } from '../../types/story';
 
-function getDisplayName(ref: string | UserRef | undefined): string | undefined {
+function getDisplayName(ref: string | UserRef | null | undefined): string | undefined {
   if (!ref) return undefined;
   return typeof ref === 'object' ? ref.name : undefined;
 }

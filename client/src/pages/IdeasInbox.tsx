@@ -486,7 +486,7 @@ export default function IdeasInbox() {
                       onApproveAsMine={handleApproveAsMine}
                       onReject={handleReject}
                       onPark={handlePark}
-                      canApprove={true}
+                      canApprove={canApprove}
                       isProducer={user?.role === 'producer'}
                     />
                   ))}
@@ -500,7 +500,7 @@ export default function IdeasInbox() {
                         onReject={handleRejectPiece}
                         onPark={handleParkPiece}
                         onApprove={handleApprovePiece}
-                        canApprove={true}
+                        canApprove={canApprove}
                       />
                     ))}
                 </div>
@@ -585,7 +585,7 @@ export default function IdeasInbox() {
                     onReject={handleRejectSeries}
                     onPark={handleParkSeries}
                     onApprove={handleApproveSeries}
-                    canApprove={true}
+                    canApprove={canApprove}
                   />
                 ))}
               </div>

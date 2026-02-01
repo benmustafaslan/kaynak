@@ -395,7 +395,7 @@ export function KanbanBoard({ toolbarRight }: KanbanBoardProps = {}) {
         <PiecesCalendarView
           pieces={pieces}
           basePath={basePath}
-          returnPath={`${basePath}/board${viewMode !== 'kanban' ? `?view=${viewMode}` : ''}`}
+          returnPath={`${basePath}/board?view=calendar`}
         />
       ) : viewMode === 'deadline' ? (
         <div className="deadline-view">
