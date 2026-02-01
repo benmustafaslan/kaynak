@@ -69,13 +69,16 @@ export default function WorkspacePicker() {
           <ul className="mb-8 list-none space-y-2 p-0">
             {workspaces.map((w) => (
               <li key={w._id}>
-                <Link
-                  to={`/w/${w.slug}/board`}
-                  className="block rounded-lg border px-4 py-3 text-left transition-colors hover:bg-black/5"
-                  style={{ borderColor: 'var(--border)', color: 'var(--app-text-primary)' }}
+                <button
+                  type="button"
+                  className="block w-full rounded-lg border px-4 py-3 text-left transition-colors hover:bg-black/5"
+                  style={{ borderColor: 'var(--border)', color: 'var(--app-text-primary)', background: 'none', cursor: 'pointer' }}
+                  onClick={() => {
+                    setCurrentBySlug(w.slug).then((ok) => ok && navigate('/board', { replace: true }));
+                  }}
                 >
                   <span className="font-medium">{w.name}</span>
-                </Link>
+                </button>
               </li>
             ))}
           </ul>

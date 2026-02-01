@@ -9,6 +9,7 @@ const rootDir = path.resolve(__dirname, '..', '..');
 dotenv.config({ path: path.join(rootDir, '.env') });
 
 import express from 'express';
+import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import connectDB from './config/database.js';
@@ -19,6 +20,7 @@ await connectDB();
 
 const app = express();
 
+app.use(helmet({ contentSecurityPolicy: env.nodeEnv === 'production' }));
 app.use(
   cors({
     origin: env.clientUrl,
@@ -45,7 +47,11 @@ if (env.nodeEnv === 'production' && fs.existsSync(clientDist)) {
 }
 
 app.use(async (err, req, res, next) => {
-  console.error(err.stack);
+  if (env.nodeEnv === 'production') {
+    console.error(err.message);
+  } else {
+    console.error(err.stack);
+  }
   res.status(err.status || 500).json({
     error: env.nodeEnv === 'production' ? 'Internal server error' : err.message,
   });

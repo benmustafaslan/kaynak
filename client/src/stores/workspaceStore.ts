@@ -3,6 +3,16 @@ import { setWorkspaceId } from '../utils/api';
 import { workspacesApi } from '../utils/workspacesApi';
 import type { Workspace } from '../types/workspace';
 
+const LAST_WORKSPACE_SLUG_KEY = 'kaynak_last_workspace_slug';
+
+export function getLastWorkspaceSlug(): string | null {
+  try {
+    return localStorage.getItem(LAST_WORKSPACE_SLUG_KEY);
+  } catch {
+    return null;
+  }
+}
+
 interface WorkspaceState {
   workspaces: Workspace[];
   current: Workspace | null;
@@ -42,6 +52,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const workspace = await workspacesApi.getBySlug(slug);
       set({ current: workspace, loading: false });
       setWorkspaceId(workspace._id);
+      try {
+        localStorage.setItem(LAST_WORKSPACE_SLUG_KEY, slug);
+      } catch {
+        // ignore
+      }
       return true;
     } catch {
       set({ loading: false, current: null });

@@ -9,12 +9,26 @@ import { scriptVersionsApi } from '../../utils/scriptVersionsApi';
 
 const AUTO_SAVE_INTERVAL_MS = 10 * 1000;
 
-/** Decode HTML entities so previously escaped script content (e.g. &lt;p&gt;) displays as HTML. */
+/**
+ * Decode HTML entities (e.g. &lt; &gt; &amp;) without using innerHTML to avoid XSS.
+ * Only decodes common entities; does not execute or parse tags.
+ */
 function decodeScriptContent(html: string): string {
-  if (!html || !html.includes('&')) return html;
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  return div.innerHTML;
+  if (!html || typeof html !== 'string' || !html.includes('&')) return html;
+  return html
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, n) => {
+      const code = parseInt(n, 10);
+      return code <= 0x10ffff ? String.fromCodePoint(code) : '';
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => {
+      const code = parseInt(n, 16);
+      return code <= 0x10ffff ? String.fromCodePoint(code) : '';
+    });
 }
 
 /** If template looks like plain text (no tags), wrap each line in <p> and escape; otherwise use as HTML. */

@@ -30,6 +30,9 @@ export const register = async (req, res, next) => {
     if (password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
+    if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
+      return res.status(400).json({ error: 'Password must include at least one letter and one number' });
+    }
 
     const nameClean = validator.escape(validator.trim(name)).slice(0, 200);
     if (!nameClean) {
@@ -52,7 +55,7 @@ export const register = async (req, res, next) => {
 
     const userResponse = user.toObject();
     delete userResponse.password;
-    res.status(201).json({ user: userResponse, token });
+    res.status(201).json({ user: userResponse });
   } catch (err) {
     next(err);
   }
@@ -82,7 +85,7 @@ export const login = async (req, res, next) => {
 
     const userResponse = user.toObject();
     delete userResponse.password;
-    res.json({ user: userResponse, token });
+    res.json({ user: userResponse });
   } catch (err) {
     next(err);
   }

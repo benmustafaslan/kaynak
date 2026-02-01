@@ -30,7 +30,6 @@ function safeAuthStorage() {
 
 interface AuthState {
   user: User | null;
-  token: string | null;
   loading: boolean;
   checked: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -43,17 +42,14 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
-      token: null,
       loading: false,
       checked: false,
 
       login: async (email, password) => {
         set({ loading: true });
         try {
-          const data = await api.post<{ user: User; token?: string }>('/auth/login', { email, password });
-          const token = typeof data.token === 'string' && data.token ? data.token : null;
-          if (token) setStoredToken(token);
-          set({ user: data.user, token, loading: false });
+          const data = await api.post<{ user: User }>('/auth/login', { email, password });
+          set({ user: data.user, loading: false });
         } catch (e) {
           set({ loading: false });
           throw e;
@@ -63,14 +59,12 @@ export const useAuthStore = create<AuthState>()(
       register: async (email, password, name) => {
         set({ loading: true });
         try {
-          const data = await api.post<{ user: User; token?: string }>('/auth/register', {
+          const data = await api.post<{ user: User }>('/auth/register', {
             email,
             password,
             name,
           });
-          const token = typeof data.token === 'string' && data.token ? data.token : null;
-          if (token) setStoredToken(token);
-          set({ user: data.user, token, loading: false });
+          set({ user: data.user, loading: false });
         } catch (e) {
           set({ loading: false });
           throw e;
@@ -82,7 +76,7 @@ export const useAuthStore = create<AuthState>()(
           await api.post('/auth/logout');
         } finally {
           setStoredToken(null);
-          set({ user: null, token: null });
+          set({ user: null });
         }
       },
 
@@ -103,7 +97,7 @@ export const useAuthStore = create<AuthState>()(
           const status = (err as Error & { status?: number }).status;
           if (status === 401) {
             setStoredToken(null);
-            set({ user: null, token: null, loading: false });
+            set({ user: null, loading: false });
           } else {
             set({ loading: false });
           }
@@ -113,12 +107,8 @@ export const useAuthStore = create<AuthState>()(
     {
       name: AUTH_STORAGE_KEY,
       storage: createJSONStorage(safeAuthStorage),
-      partialize: (state) => ({ user: state.user, token: state.token }),
-      onRehydrateStorage: () => (state, err) => {
-        if (!err && state?.token) {
-          setStoredToken(state.token);
-        }
-      },
+      partialize: (state) => ({ user: state.user }),
+      onRehydrateStorage: () => () => {},
     }
   )
 );

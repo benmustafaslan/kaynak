@@ -15,6 +15,7 @@ import { getFeed } from '../controllers/feedController.js';
 import { exportDocx, exportHtml } from '../controllers/exportController.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireWorkspace } from '../middleware/workspace.js';
+import { validateObjectId } from '../middleware/validateObjectId.js';
 
 const router = Router();
 router.use('/auth', authRoutes);
@@ -24,7 +25,7 @@ router.use('/invites', invitesRoutes);
 router.get('/activity/recent', authenticate, requireWorkspace, getRecent);
 router.get('/feed', authenticate, getFeed);
 router.use('/pieces', piecesRoutes);
-router.get('/stories/:storyId/export', authenticate, requireWorkspace, (req, res, next) => {
+router.get('/stories/:storyId/export', authenticate, requireWorkspace, validateObjectId('storyId'), (req, res, next) => {
   if (req.query.format === 'docx') return exportDocx(req, res, next);
   if (req.query.format === 'html') return exportHtml(req, res, next);
   res.status(400).json({ error: 'Use ?format=docx or ?format=html' });

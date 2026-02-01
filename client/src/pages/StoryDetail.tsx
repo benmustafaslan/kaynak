@@ -19,6 +19,12 @@ import { PIECE_STATE_LABELS } from '../types/piece';
 import { getAvailablePieceTypes, getPieceTypeDisplayLabel, getPieceTypeTemplate } from '../utils/pieceTypesPreferences';
 import { SeriesSearchBar } from '../components/Kanban/SeriesSearchBar';
 import { LongTextField } from '../components/LongTextField';
+import { AssignmentModal, RejectModal, ParkModal } from '../components/IdeasInbox';
+import type { AssignmentResult } from '../components/IdeasInbox/AssignmentModal';
+
+function canApproveIdeas(role: string | undefined): boolean {
+  return role === 'chief_editor' || role === 'producer';
+}
 
 const TABS = ['Research', 'Media', 'Activity'] as const;
 type Tab = (typeof TABS)[number];
@@ -145,6 +151,9 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
   const [addPieceHeadline, setAddPieceHeadline] = useState('');
   const [addPieceFormat, setAddPieceFormat] = useState<string>(addPieceDefaultFormat);
   const [creatingPiece, setCreatingPiece] = useState(false);
+  const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showParkModal, setShowParkModal] = useState(false);
   const dirtyRef = useRef(false);
   const [, setDirtyTick] = useState(0);
   const scriptEditorRef = useRef<ScriptEditorHandle | null>(null);
@@ -277,6 +286,94 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
     teamMembers: s.teamMembers,
   }), []);
 
+  const isIdeaPending = story?.state?.toLowerCase() === 'idea' && !story?.approved && !story?.rejectedAt;
+  const canApprove = canApproveIdeas(user?.role);
+  const isProducer = user?.role === 'producer';
+
+  const handleAssignmentConfirm = useCallback(
+    async (assignments: AssignmentResult) => {
+      if (!id || !user) return;
+      try {
+        const now = new Date().toISOString();
+        await storiesApi.update(id, {
+          approved: true,
+          approvedBy: user._id,
+          approvedAt: now,
+          producer: assignments.producer || undefined,
+          editors: assignments.editors,
+        });
+        setShowAssignmentModal(false);
+        await fetchStory();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to approve');
+      }
+    },
+    [id, user, fetchStory]
+  );
+
+  const handleApproveAsMine = useCallback(async () => {
+    if (!id || !user) return;
+    try {
+      const now = new Date().toISOString();
+      await storiesApi.update(id, {
+        approved: true,
+        approvedBy: user._id,
+        approvedAt: now,
+        producer: user._id,
+        editors: [],
+      });
+      await fetchStory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve');
+    }
+  }, [id, user, fetchStory]);
+
+  const handleApproveSeries = useCallback(async () => {
+    if (!id || !user) return;
+    try {
+      const now = new Date().toISOString();
+      await storiesApi.update(id, {
+        approved: true,
+        approvedBy: user._id,
+        approvedAt: now,
+      });
+      await fetchStory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve series');
+    }
+  }, [id, user, fetchStory]);
+
+  const handleRejectConfirm = useCallback(
+    async (reason: string) => {
+      if (!id) return;
+      try {
+        await storiesApi.update(id, {
+          rejectedAt: new Date().toISOString(),
+          rejectionReason: reason || undefined,
+        });
+        setShowRejectModal(false);
+        await fetchStory();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to reject');
+      }
+    },
+    [id, fetchStory]
+  );
+
+  const handleParkConfirm = useCallback(
+    async (date: Date) => {
+      if (!id) return;
+      try {
+        await storiesApi.update(id, { parkedUntil: date.toISOString() });
+        setShowParkModal(false);
+        await fetchStory();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to park');
+      }
+    },
+    [id, fetchStory]
+  );
+
   const hasUnsavedChanges = dirtyRef.current;
 
   const handleSaveAll = useCallback(async () => {
@@ -307,13 +404,14 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
     if (!story) return;
     try {
       const res = await scriptVersionsApi.getCurrent(story._id);
-      const scriptContent = res.content ?? '';
+      const raw = res.content ?? '';
+      const scriptContent = escapeHtmlForPrint(raw || '(No script content)');
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escape(story.headline)}</title></head><body>
 <h1>${escape(story.headline)}</h1>
 <h2>Description</h2>
 <p>${escape(story.description)}</p>
 <h2>Script</h2>
-<div>${scriptContent || '(No script content)'}</div>
+<div>${scriptContent}</div>
 </body></html>`;
       const w = window.open('', '_blank');
       if (w) {
@@ -330,6 +428,16 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
 
   function escape(s: string) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  /** Escape HTML so script content cannot execute when written to print window. */
+  function escapeHtmlForPrint(s: string) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   const handleDownloadDocx = useCallback(async () => {
@@ -580,6 +688,35 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
               placeholder="Untitled"
             />
           </div>
+
+          {/* Idea actions – approve / reject / park when viewing an unapproved idea (story or series) */}
+          {isIdeaPending && canApprove && (
+            <div className="border-0 px-3 py-2 flex flex-wrap items-center gap-2">
+              <span className="text-sm text-app-text-secondary mr-1">Idea review:</span>
+              {story.kind === 'parent' ? (
+                <button type="button" className="btn btn-primary" onClick={handleApproveSeries}>
+                  ✓ Approve series
+                </button>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-primary" onClick={() => setShowAssignmentModal(true)}>
+                    ✓ Approve & Start Research
+                  </button>
+                  {isProducer && (
+                    <button type="button" className="btn btn-primary" onClick={handleApproveAsMine}>
+                      ✓ Approve as my story
+                    </button>
+                  )}
+                </>
+              )}
+              <button type="button" className="btn btn-secondary" onClick={() => setShowParkModal(true)}>
+                ⏸ Park for Later
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => setShowRejectModal(true)}>
+                Reject
+              </button>
+            </div>
+          )}
 
           {/* Property rows – icon | label | value (reference style) */}
           <div className="border-0 px-3 py-2">
@@ -1109,6 +1246,24 @@ const StoryDetail = forwardRef<StoryDetailHandle, StoryDetailProps>(function Sto
           selection={factCheckModal.selection}
           onClose={() => setFactCheckModal(null)}
           onSubmit={handleSubmitFactCheck}
+        />
+      )}
+
+      {showAssignmentModal && (
+        <AssignmentModal onClose={() => setShowAssignmentModal(false)} onConfirm={handleAssignmentConfirm} />
+      )}
+      {showRejectModal && (
+        <RejectModal
+          ideaHeadline={story.headline}
+          onClose={() => setShowRejectModal(false)}
+          onConfirm={handleRejectConfirm}
+        />
+      )}
+      {showParkModal && (
+        <ParkModal
+          ideaHeadline={story.headline}
+          onClose={() => setShowParkModal(false)}
+          onConfirm={handleParkConfirm}
         />
       )}
 

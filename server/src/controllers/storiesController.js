@@ -79,8 +79,10 @@ export const list = async (req, res, next) => {
     if (category && category.trim()) {
       query.categories = category.trim();
     }
+    const MAX_SEARCH_LENGTH = 200;
     if (search && search.trim()) {
-      const term = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const raw = search.trim();
+      const term = raw.slice(0, MAX_SEARCH_LENGTH).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const searchOr = [
         { headline: new RegExp(term, 'i') },
         { description: new RegExp(term, 'i') },

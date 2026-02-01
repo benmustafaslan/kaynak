@@ -101,14 +101,16 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
-  const { current: workspace, workspaces, fetchWorkspaces } = useWorkspaceStore();
+  const { workspaceSlug } = useParams<{ workspaceSlug?: string }>();
+  const { current: workspace, workspaces, fetchWorkspaces, setCurrentBySlug } = useWorkspaceStore();
   const location = useLocation();
   const navigate = useNavigate();
-  const storyMatch = useMatch('/w/:workspaceSlug/story/:id');
-  const storyId = storyMatch?.params?.id;
-  const pieceMatch = useMatch('/w/:workspaceSlug/piece/:id');
-  const pieceId = pieceMatch?.params?.id;
+  const storyMatchWithSlug = useMatch('/w/:workspaceSlug/story/:id');
+  const storyMatchSlugless = useMatch('/story/:id');
+  const storyId = storyMatchWithSlug?.params?.id ?? storyMatchSlugless?.params?.id;
+  const pieceMatchWithSlug = useMatch('/w/:workspaceSlug/piece/:id');
+  const pieceMatchSlugless = useMatch('/piece/:id');
+  const pieceId = pieceMatchWithSlug?.params?.id ?? pieceMatchSlugless?.params?.id;
   const [unapprovedCount, setUnapprovedCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
@@ -224,15 +226,18 @@ export function AppLayout({ children }: AppLayoutProps) {
               >
                 {workspaces.map((w) => (
                   <li key={w._id} role="none">
-                    <Link
-                      to={`/w/${w.slug}/board`}
+                    <button
+                      type="button"
                       role="menuitem"
-                      className="block truncate rounded px-3 py-2 text-sm hover:bg-black/5"
-                      style={{ color: 'var(--app-text-primary)' }}
-                      onClick={closeMobileMenu}
+                      className="block w-full truncate rounded px-3 py-2 text-left text-sm hover:bg-black/5"
+                      style={{ color: 'var(--app-text-primary)', background: 'none', border: 'none', cursor: 'pointer' }}
+                      onClick={() => {
+                        closeMobileMenu();
+                        setCurrentBySlug(w.slug).then((ok) => ok && navigate('/board'));
+                      }}
                     >
                       {w.name}
-                    </Link>
+                    </button>
                   </li>
                 ))}
                 <li role="none">
@@ -281,17 +286,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </span>
               )}
             </Link>
-            {canInvite && (
-              <button
-                type="button"
-                className="app-sidebar-link"
-                style={{ width: '100%', border: 0, background: 'none', cursor: 'pointer', textAlign: 'left' }}
-                onClick={() => { setInviteModalOpen(true); closeMobileMenu(); }}
-              >
-                <IconInvite />
-                <span className="app-sidebar-link-text">Invite people</span>
-              </button>
-            )}
           </div>
           <div className="mt-auto flex flex-col gap-1">
             <Link
@@ -302,6 +296,17 @@ export function AppLayout({ children }: AppLayoutProps) {
               <IconArchive />
               <span className="app-sidebar-link-text">Archive</span>
             </Link>
+            {canInvite && (
+              <button
+                type="button"
+                className="app-sidebar-link"
+                style={{ width: '100%', border: 0, background: 'none', cursor: 'pointer', textAlign: 'left' }}
+                onClick={() => { setInviteModalOpen(true); closeMobileMenu(); }}
+              >
+                <IconInvite />
+                <span className="app-sidebar-link-text">Add Members</span>
+              </button>
+            )}
             <Link
               to={`${basePath}/preferences`}
               className={`app-sidebar-link ${isPreferences ? 'active' : ''}`}
@@ -344,7 +349,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             aria-labelledby="invite-modal-title"
           >
             <h2 id="invite-modal-title" className="mb-4 text-lg font-semibold" style={{ color: 'var(--app-text-primary)' }}>
-              Invite people to this workspace
+              Add members to this workspace
             </h2>
             {inviteError && (
               <p className="mb-3 text-sm" style={{ color: 'var(--accent-danger)' }}>{inviteError}</p>

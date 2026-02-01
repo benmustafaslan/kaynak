@@ -8,6 +8,11 @@ import { storiesApi } from '../utils/storiesApi';
 import { ScriptEditor, type ScriptEditorHandle } from '../components/ScriptEditor/ScriptEditor';
 import { getPieceTypeDisplayLabel, getAvailablePieceTypes, getPieceTypeTemplate } from '../utils/pieceTypesPreferences';
 import { PIECE_STATES, PIECE_STATE_LABELS } from '../types/piece';
+import { RejectModal, ParkModal } from '../components/IdeasInbox';
+
+function canApproveIdeas(role: string | undefined): boolean {
+  return role === 'chief_editor' || role === 'producer';
+}
 
 export interface PieceDetailProps {
   isModal?: boolean;
@@ -42,6 +47,8 @@ const PieceDetail = forwardRef<PieceDetailHandle, PieceDetailProps>(function Pie
   const [addRelatedStoryList, setAddRelatedStoryList] = useState<Story[]>([]);
   const [addingRelatedStoryId, setAddingRelatedStoryId] = useState<string | null>(null);
   const [expandedResearchIds, setExpandedResearchIds] = useState<Set<string>>(new Set());
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showParkModal, setShowParkModal] = useState(false);
 
   const saveAndClose = useCallback(async () => {
     try {
@@ -135,6 +142,51 @@ const PieceDetail = forwardRef<PieceDetailHandle, PieceDetailProps>(function Pie
     });
   }, []);
 
+  const handleApprovePiece = useCallback(async () => {
+    if (!pieceId || !user) return;
+    try {
+      await piecesApi.update(pieceId, {
+        approved: true,
+        approvedBy: user._id,
+        approvedAt: new Date().toISOString(),
+      });
+      await fetchPiece();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve');
+    }
+  }, [pieceId, user, fetchPiece]);
+
+  const handleRejectPieceConfirm = useCallback(
+    async (reason: string) => {
+      if (!pieceId) return;
+      try {
+        await piecesApi.update(pieceId, {
+          rejectedAt: new Date().toISOString(),
+          rejectionReason: reason || undefined,
+        });
+        setShowRejectModal(false);
+        await fetchPiece();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to reject');
+      }
+    },
+    [pieceId, fetchPiece]
+  );
+
+  const handleParkPieceConfirm = useCallback(
+    async (date: Date) => {
+      if (!pieceId) return;
+      try {
+        await piecesApi.update(pieceId, { parkedUntil: date.toISOString() });
+        setShowParkModal(false);
+        await fetchPiece();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to park');
+      }
+    },
+    [pieceId, fetchPiece]
+  );
+
   if (!pieceId) {
     return (
       <div className="p-6 text-app-text-secondary">
@@ -167,6 +219,8 @@ const PieceDetail = forwardRef<PieceDetailHandle, PieceDetailProps>(function Pie
 
   const formatLabel = getPieceTypeDisplayLabel(piece.format);
   const hasLinkedStories = Array.isArray(piece.linkedStoryIds) && piece.linkedStoryIds.length > 0;
+  const isPieceIdea = !hasLinkedStories && !piece.approved && !piece.rejectedAt;
+  const canApprovePiece = canApproveIdeas(user?.role);
   const availableFormats = getAvailablePieceTypes();
   const formatOptions = piece.format && !availableFormats.includes(piece.format)
     ? [piece.format, ...availableFormats]
@@ -257,6 +311,21 @@ const PieceDetail = forwardRef<PieceDetailHandle, PieceDetailProps>(function Pie
             </select>
           </div>
         </div>
+        {/* Idea actions – approve / reject / park when viewing an unapproved piece idea (no linked stories) */}
+        {isPieceIdea && canApprovePiece && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-sm text-app-text-secondary mr-1">Piece idea review:</span>
+            <button type="button" className="btn btn-primary" onClick={handleApprovePiece}>
+              ✓ Approve
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={() => setShowParkModal(true)}>
+              ⏸ Park for Later
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => setShowRejectModal(true)}>
+              Reject
+            </button>
+          </div>
+        )}
         <p className="mt-2 text-xs text-app-text-tertiary">
           Created by {(piece.createdBy as { name?: string })?.name ?? 'Unknown'}
         </p>
@@ -353,6 +422,21 @@ const PieceDetail = forwardRef<PieceDetailHandle, PieceDetailProps>(function Pie
           </div>
         </div>
       </div>
+
+      {showRejectModal && (
+        <RejectModal
+          ideaHeadline={piece.headline}
+          onClose={() => setShowRejectModal(false)}
+          onConfirm={handleRejectPieceConfirm}
+        />
+      )}
+      {showParkModal && (
+        <ParkModal
+          ideaHeadline={piece.headline}
+          onClose={() => setShowParkModal(false)}
+          onConfirm={handleParkPieceConfirm}
+        />
+      )}
     </div>
   );
 });

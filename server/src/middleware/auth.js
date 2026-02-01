@@ -42,7 +42,10 @@ export const optionalAuth = async (req, res, next) => {
     const user = await User.findById(decoded.userId).select('-password');
     if (user) req.user = user;
     next();
-  } catch {
-    next();
+  } catch (err) {
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+      return next();
+    }
+    next(err);
   }
 };

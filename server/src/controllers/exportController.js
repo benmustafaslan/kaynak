@@ -21,6 +21,20 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+/** Safe basename for filenames: alphanumeric, hyphen, underscore (no extension). */
+function safeAttachmentBasename(displayName) {
+  const base = typeof displayName === 'string'
+    ? displayName.slice(0, 50).replace(/[^a-zA-Z0-9-_]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'download'
+    : 'download';
+  return base;
+}
+
+/** Safe Content-Disposition value: preserves extension, RFC 5987 filename* for UTF-8. */
+function contentDispositionHeader(filename) {
+  const safe = String(filename).slice(0, 100).replace(/["\\]/g, '');
+  return `attachment; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(safe)}`;
+}
+
 /** Export story as HTML (comments/fact-checks excluded). Word can open .html. */
 export const exportHtml = async (req, res, next) => {
   try {
@@ -55,9 +69,9 @@ export const exportHtml = async (req, res, next) => {
 </body>
 </html>`;
 
-    const filename = `story-${story.headline.slice(0, 50).replace(/[^a-zA-Z0-9-_]/g, '-')}.html`;
+    const filename = `story-${safeAttachmentBasename(story.headline)}.html`;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Disposition', contentDispositionHeader(filename));
     res.send(html);
   } catch (err) {
     next(err);
@@ -124,9 +138,9 @@ export const exportDocx = async (req, res, next) => {
     });
 
     const buffer = await Packer.toBuffer(doc);
-    const filename = `story-${story.headline.slice(0, 50).replace(/[^a-zA-Z0-9-_]/g, '-')}.docx`;
+    const filename = `story-${safeAttachmentBasename(story.headline)}.docx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Disposition', contentDispositionHeader(filename));
     res.send(buffer);
   } catch (err) {
     next(err);

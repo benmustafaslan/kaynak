@@ -1,9 +1,9 @@
 /**
  * One-off setup:
  * 1. Rename the "Default" workspace to "Zapt's Workspace"
- * 2. Create user mustafa@kaynak.app (password: 12341234)
- * 3. Create a personal workspace for this user and add them as owner
- * 4. Add this user to Zapt's Workspace as a member
+ * 2. Create users mustafa@kaynak.app and editor@kaynak.local (password: 12341234)
+ * 3. Create a personal workspace for Mustafa and add them as owner
+ * 4. Add mustafa@kaynak.app and editor@kaynak.local to Zapt's Workspace as owners
  *
  * Run from repo root: node server/src/scripts/setupZaptAndMustafa.js
  * (or from server: node src/scripts/setupZaptAndMustafa.js)
@@ -42,20 +42,26 @@ if (!MONGODB_URI) {
 async function run() {
   await mongoose.connect(MONGODB_URI, { dbName: MONGODB_DB_NAME });
 
-  // 1. Find workspace named "Default" and rename to Zapt's Workspace (slug unchanged)
-  const defaultWs = await Workspace.findOne({ name: 'Default' });
-  if (!defaultWs) {
-    console.error('No workspace named "Default" found. Run migrateToWorkspaces.js first.');
-    await mongoose.disconnect();
-    process.exit(1);
+  // 1. Find Zapt's Workspace: rename "Default" if present, or use existing "Zapt's Workspace"
+  const ZAPTS_NAME = "Zapt's Workspace";
+  let zaptsWorkspace = await Workspace.findOne({ name: 'Default' });
+  if (zaptsWorkspace) {
+    zaptsWorkspace.name = ZAPTS_NAME;
+    await zaptsWorkspace.save();
+    console.log("Renamed workspace to Zapt's Workspace (slug:", zaptsWorkspace.slug + ')');
+  } else {
+    zaptsWorkspace = await Workspace.findOne({ name: ZAPTS_NAME });
+    if (!zaptsWorkspace) {
+      console.error('No workspace named "Default" or "Zapt\'s Workspace" found. Run migrateToWorkspaces.js first.');
+      await mongoose.disconnect();
+      process.exit(1);
+    }
+    console.log("Using existing Zapt's Workspace (slug:", zaptsWorkspace.slug + ')');
   }
-  defaultWs.name = "Zapt's Workspace";
-  await defaultWs.save();
-  console.log("Renamed workspace to Zapt's Workspace (slug:", defaultWs.slug + ')');
 
-  const zaptsWorkspaceId = defaultWs._id;
+  const zaptsWorkspaceId = zaptsWorkspace._id;
 
-  // 2. Create user mustafa@kaynak.app
+  // 2. Create users mustafa@kaynak.app and editor@kaynak.local
   let mustafa = await User.findOne({ email: 'mustafa@kaynak.app' });
   if (mustafa) {
     console.log('User mustafa@kaynak.app already exists.');
@@ -66,6 +72,18 @@ async function run() {
       name: 'Mustafa',
     });
     console.log('Created user mustafa@kaynak.app');
+  }
+
+  let editor = await User.findOne({ email: 'editor@kaynak.local' });
+  if (editor) {
+    console.log('User editor@kaynak.local already exists.');
+  } else {
+    editor = await User.create({
+      email: 'editor@kaynak.local',
+      password: '12341234',
+      name: 'Editor',
+    });
+    console.log('Created user editor@kaynak.local');
   }
 
   // 3. Create personal workspace for Mustafa (random slug)
@@ -93,20 +111,29 @@ async function run() {
     console.log("Personal workspace already exists.");
   }
 
-  // 4. Invite Mustafa to Zapt's Workspace (add as member)
-  const existingMember = await WorkspaceMember.findOne({
-    workspaceId: zaptsWorkspaceId,
-    userId: mustafa._id,
-  });
-  if (!existingMember) {
-    await WorkspaceMember.create({
+  // 4. Add mustafa@kaynak.app and editor@kaynak.local to Zapt's Workspace as owners
+  for (const { user, email } of [
+    { user: mustafa, email: 'mustafa@kaynak.app' },
+    { user: editor, email: 'editor@kaynak.local' },
+  ]) {
+    const existing = await WorkspaceMember.findOne({
       workspaceId: zaptsWorkspaceId,
-      userId: mustafa._id,
-      role: 'editor',
+      userId: user._id,
     });
-    console.log("Added mustafa@kaynak.app to Zapt's Workspace as editor.");
-  } else {
-    console.log("User is already a member of Zapt's Workspace.");
+    if (!existing) {
+      await WorkspaceMember.create({
+        workspaceId: zaptsWorkspaceId,
+        userId: user._id,
+        role: 'owner',
+      });
+      console.log("Added", email, "to Zapt's Workspace as owner.");
+    } else if (existing.role !== 'owner') {
+      existing.role = 'owner';
+      await existing.save();
+      console.log("Updated", email, "to owner of Zapt's Workspace.");
+    } else {
+      console.log(email, "is already an owner of Zapt's Workspace.");
+    }
   }
 
   console.log('Done.');

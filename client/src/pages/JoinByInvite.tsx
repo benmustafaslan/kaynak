@@ -39,7 +39,7 @@ export default function JoinByInvite() {
           const { fetchWorkspaces: fetch, setCurrentBySlug: setCurrent } = useWorkspaceStore.getState();
           await fetch();
           await setCurrent(res.workspace.slug);
-          navigate(`/w/${res.workspace.slug}/board`, { replace: true });
+          navigate('/board', { replace: true });
         })
         .catch((err) => {
           setError(err instanceof Error ? err.message : 'Invalid or expired invite');
@@ -62,7 +62,7 @@ export default function JoinByInvite() {
       const res = await invitesApi.accept(rawToken);
       await fetchWorkspaces();
       await setCurrentBySlug(res.workspace.slug);
-      navigate(`/w/${res.workspace.slug}/board`, { replace: true });
+      navigate('/board', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid or expired invite');
     } finally {

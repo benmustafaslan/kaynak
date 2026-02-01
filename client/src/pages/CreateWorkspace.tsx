@@ -60,12 +60,12 @@ export default function CreateWorkspace() {
             Workspace created
           </h1>
           <p className="text-center text-sm" style={{ color: 'var(--medium-gray)', marginBottom: 24 }}>
-            <strong style={{ color: 'var(--app-text-primary)' }}>{created.name}</strong> is ready. Invite people or go to your workspace.
+            <strong style={{ color: 'var(--app-text-primary)' }}>{created.name}</strong> is ready. Add members or go to your workspace.
           </p>
 
           <section className="mb-8">
             <h2 className="mb-2 text-sm font-medium" style={{ color: 'var(--app-text-primary)' }}>
-              Invite people
+              Add Members
             </h2>
             <p className="mb-3 text-sm" style={{ color: 'var(--medium-gray)' }}>
               Share this link so others can join your workspace.
@@ -103,7 +103,7 @@ export default function CreateWorkspace() {
 
           <div className="flex flex-col gap-2">
             <Link
-              to={`/w/${created.slug}/board`}
+              to="/board"
               className="block rounded px-4 py-2 text-center text-sm font-medium text-white"
               style={{ background: 'var(--accent-primary)' }}
             >

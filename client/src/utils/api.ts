@@ -18,22 +18,10 @@ export function getWorkspaceId(): string | null {
   return currentWorkspaceId;
 }
 
-/** Get token from localStorage, or from cookie if localStorage is empty (e.g. after refresh in some cases). */
-export function getStoredToken(): string | null {
-  const fromStorage = localStorage.getItem(AUTH_TOKEN_KEY);
-  if (fromStorage) return fromStorage;
-  const match = document.cookie.match(/token=([^;]+)/);
-  if (match) {
-    try {
-      return decodeURIComponent(match[1]);
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
-/** Set token in localStorage and in a same-origin cookie so it survives refresh (proxy can break server Set-Cookie). */
+/**
+ * Clear any stored token (localStorage + cookie). Used on logout and 401.
+ * Auth is cookie-only (httpOnly set by server); this clears legacy or same-origin copies.
+ */
 export function setStoredToken(token: string | null): void {
   if (token) {
     localStorage.setItem(AUTH_TOKEN_KEY, token);
@@ -52,10 +40,6 @@ async function request<T>(
   const headers: HeadersInit = { ...(init.headers as HeadersInit) };
   if (json !== undefined) {
     (headers as Record<string, string>)['Content-Type'] = 'application/json';
-  }
-  const token = getStoredToken();
-  if (token) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
   }
   if (currentWorkspaceId) {
     (headers as Record<string, string>)['X-Workspace-Id'] = currentWorkspaceId;

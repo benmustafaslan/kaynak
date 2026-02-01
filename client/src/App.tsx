@@ -12,6 +12,7 @@ import IdeasInbox from './pages/IdeasInbox';
 import Archive from './pages/Archive';
 import Preferences from './pages/Preferences';
 import { WorkspaceLayout } from './components/WorkspaceLayout';
+import { WorkspaceFromStoreLayout } from './components/WorkspaceFromStoreLayout';
 
 const LoadingScreen = () => (
   <div
@@ -91,8 +92,26 @@ function App() {
           <Route path="story/:id" element={null} />
           <Route path="piece/:id" element={null} />
         </Route>
-        <Route path="/" element={<Navigate to="/w" replace />} />
-        <Route path="*" element={<Navigate to="/w" replace />} />
+        <Route
+          path="/"
+          element={
+            checked ? (
+              user ? <WorkspaceFromStoreLayout /> : <Navigate to="/login" replace />
+            ) : (
+              <LoadingScreen />
+            )
+          }
+        >
+          <Route index element={<Navigate to="/board" replace />} />
+          <Route path="board" element={<Board />} />
+          <Route path="stories" element={<Stories />} />
+          <Route path="ideas" element={<IdeasInbox />} />
+          <Route path="archive" element={<Archive />} />
+          <Route path="preferences" element={<Preferences />} />
+          <Route path="story/:id" element={null} />
+          <Route path="piece/:id" element={null} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
